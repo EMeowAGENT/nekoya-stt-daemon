@@ -50,6 +50,11 @@ makepkg -si
 前置：本仓库**不依赖** `~/Wayvr` 任何文件——WayVR IPC
 由本仓库自实现（`src/wayvr_ipc/`）。
 
+> **Arch 打包注意**：`PKGBUILD` 已设 `options=('!lto')` 并在 `build()` 里清空
+> `CFLAGS/CXXFLAGS/LDFLAGS`。原因是 makepkg 默认 `CFLAGS` 含 `-flto=auto`，会被
+> `cc` 带进 `ring` 的 C 构建、产出 LTO 位码对象，导致最终链接报 `ring_core_*`
+> 未定义。 手动 `cargo build --release`（不经过 makepkg）不受影响。
+
 ## 配置与密钥
 
 - 配置：`~/.config/nekoya-stt/config.toml`（模板

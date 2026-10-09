@@ -8,3 +8,10 @@
 env
 state.toml
 lexicon.txt
+
+# makepkg 产物
+/pkg
+/src
+/.cargo-home
+/*.pkg.tar.*
+/.SRCINFO
