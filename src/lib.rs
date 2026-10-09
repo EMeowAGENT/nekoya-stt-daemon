@@ -14,6 +14,7 @@ pub mod control;
 pub mod daemon;
 pub mod engine;
 pub mod hud;
+pub mod http;
 pub mod opencode;
 pub mod sinks;
 pub mod state;

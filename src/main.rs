@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use nekoya_stt::{asr, audio, config, config::Config, daemon, opencode, state::State};
+use nekoya_stt::{asr, audio, config, config::Config, control, daemon, opencode, state::State};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -46,6 +46,18 @@ enum Cmd {
     },
     /// 列出 OpenCode 会话（需要服务在运行）
     Sessions,
+    /// OpenCode 自检：列根会话；可选向某会话发送一条文本
+    OpencodeSelftest {
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long)]
+        send: Option<String>,
+    },
+    /// 向运行中的 daemon 控制通道发送命令（例如 `ctl act push`、`ctl watch-down`）
+    Ctl {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// 选择 OpenCode 会话（持久化到 state.toml）
     Use {
         /// 会话 id（`ses…`）
@@ -69,6 +81,8 @@ fn main() -> Result<()> {
         Cmd::Doctor => doctor(),
         Cmd::Transcribe { file, auto, fake } => transcribe(file, auto, fake),
         Cmd::Sessions => sessions(),
+        Cmd::OpencodeSelftest { session, send } => opencode_selftest(session, send),
+        Cmd::Ctl { args } => ctl(args),
         Cmd::Use { id } => select_session(&id),
         Cmd::Status => status(),
     }
@@ -254,7 +268,7 @@ fn doctor() -> Result<()> {
         Err(e) => println!("WayVR IPC   : 探测失败: {e}"),
     }
 
-    match discover_opencode(&cfg) {
+    match opencode::discover(&cfg) {
         Some(ep) => {
             println!("OpenCode    : {}（鉴权 {}）", ep.url, if ep.password.is_some() { "有" } else { "无" });
             println!("              可达: {}", if tcp_reachable(&ep.url) { "是" } else { "否" });
@@ -277,7 +291,7 @@ fn status() -> Result<()> {
 
 fn sessions() -> Result<()> {
     let cfg = Config::load()?;
-    match discover_opencode(&cfg) {
+    match opencode::discover(&cfg) {
         Some(ep) => {
             println!("OpenCode 端点: {}", ep.url);
             println!("HTTP 拉取会话列表将在 P4 实现（需要服务运行 + Basic 鉴权）。");
@@ -311,27 +325,40 @@ fn probe_wayvr() -> Result<bool> {
     }
 }
 
-fn opencode_state_file() -> PathBuf {
-    let state_home = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::var_os("HOME")
-                .map(|h| PathBuf::from(h).join(".local/state"))
-                .unwrap_or_default()
-        });
-    state_home.join("opencode/service.json")
+fn opencode_selftest(session: Option<String>, send: Option<String>) -> Result<()> {
+    let cfg = Config::load()?;
+    let ep = opencode::discover(&cfg).ok_or_else(|| anyhow::anyhow!("未发现 OpenCode 端点"))?;
+    println!("端点: {}", ep.url);
+
+    let list = opencode::list_sessions(&ep, 20, cfg.opencode.directory.as_deref())?;
+    println!("根会话 {} 条：", list.len());
+    for (i, s) in list.iter().enumerate() {
+        println!("  [{i}] {}  {}", s.id, s.title);
+    }
+
+    if let (Some(sid), Some(text)) = (session, send) {
+        opencode::prompt(&ep, &sid, &text)?;
+        println!("已发送 prompt 到 {sid}");
+    }
+    Ok(())
 }
 
-fn discover_opencode(cfg: &Config) -> Option<opencode::Endpoint> {
-    let reg = std::fs::read_to_string(opencode_state_file()).ok();
-    let settings = std::fs::read_to_string(config::xdg_config_home().join("opencode/service.json")).ok();
-    opencode::resolve(
-        cfg.opencode.url.as_deref(),
-        cfg.opencode.password.as_deref(),
-        &cfg.opencode.username,
-        reg.as_deref(),
-        settings.as_deref(),
-    )
+fn ctl(args: Vec<String>) -> Result<()> {
+    let cmd = args.join(" ");
+    if cmd.trim().is_empty() {
+        anyhow::bail!("用法: nekoya-stt ctl <命令…>（见 README 控制通道）");
+    }
+    let sock = config::control_socket();
+    match control::request_sync(&sock, &cmd) {
+        Ok(reply) => {
+            println!("{reply}");
+            Ok(())
+        }
+        Err(e) => anyhow::bail!(
+            "无法连接 daemon（{}）：{e}\n提示：先运行 `nekoya-stt run`",
+            sock.display()
+        ),
+    }
 }
 
 fn tcp_reachable(url: &str) -> bool {

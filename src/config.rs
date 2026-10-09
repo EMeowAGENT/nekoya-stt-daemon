@@ -206,6 +206,22 @@ pub fn xdg_runtime_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
+pub fn xdg_state_home() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".local/state"))
+}
+
+/// OpenCode 运行时注册文件（含真实 `url`）。
+pub fn opencode_registration_file() -> PathBuf {
+    xdg_state_home().join("opencode/service.json")
+}
+
+/// OpenCode 配置文件（含 `hostname`/`port`/`password`）。
+pub fn opencode_settings_file() -> PathBuf {
+    xdg_config_home().join("opencode/service.json")
+}
+
 pub fn config_dir() -> PathBuf {
     xdg_config_home().join("nekoya-stt")
 }

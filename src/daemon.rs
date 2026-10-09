@@ -21,6 +21,7 @@ use crate::config::{self, Config};
 use crate::control::{self, Cmd};
 use crate::engine::Engine;
 use crate::hud;
+use crate::opencode::{self, SessionInfo};
 use crate::sinks;
 use crate::state::State as PersistedState;
 use crate::wayvr_ipc::conn::WayvrLink;
@@ -52,6 +53,9 @@ struct Inner {
     active: Option<Active>,
     link: WayvrLink,
     last_status: String,
+    /// 最近一次拉取的会话列表（用于 `act select N`）。
+    sessions: Vec<SessionInfo>,
+    list_visible: bool,
 }
 
 #[derive(Clone)]
@@ -72,6 +76,8 @@ impl Daemon {
                 active: None,
                 link,
                 last_status: "空闲".into(),
+                sessions: Vec::new(),
+                list_visible: false,
             })),
             cfg,
             corpus,
@@ -206,14 +212,8 @@ impl Daemon {
                 }
             }
             Cmd::ActPush => self.push_opencode().await,
-            Cmd::ActList => {
-                self.hud_status("会话列表：P4 实现").await;
-                "p4".into()
-            }
-            Cmd::ActSelect(_n) => {
-                self.hud_status("会话选择：P4 实现").await;
-                "p4".into()
-            }
+            Cmd::ActList => self.toggle_session_list().await,
+            Cmd::ActSelect(n) => self.select_session_index(n).await,
         }
     }
 
@@ -222,21 +222,118 @@ impl Daemon {
             let inner = self.inner.lock().await;
             (inner.engine.last_final().map(str::to_string), inner.session.clone())
         };
-        match (text, session) {
-            (Some(_t), Some(_s)) => {
-                // P4 实现 HTTP 推送；此处先明确占位。
-                self.hud_status("推送 OpenCode：P4 实现").await;
-                "p4".into()
-            }
+        let (text, session) = match (text, session) {
+            (Some(t), Some(s)) => (t, s),
             (_, None) => {
                 self.hud_status("未选择会话").await;
-                "no-session".into()
+                return "no-session".into();
             }
             (None, _) => {
                 self.hud_status("无可用转写").await;
-                "empty".into()
+                return "empty".into();
+            }
+        };
+
+        let cfg = self.cfg.clone();
+        let res = tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let ep = opencode::discover(&cfg).ok_or_else(|| "未发现 OpenCode 端点".to_string())?;
+            opencode::prompt(&ep, &session, &text).map_err(|e| e.to_string())
+        })
+        .await;
+
+        match res {
+            Ok(Ok(())) => {
+                self.hud_status("已推送到 OpenCode").await;
+                "ok".into()
+            }
+            Ok(Err(e)) => {
+                self.hud_status(&format!("推送失败：{e}")).await;
+                format!("err: {e}")
+            }
+            Err(e) => {
+                self.hud_status(&format!("推送失败：{e}")).await;
+                format!("err: {e}")
             }
         }
+    }
+
+    /// `act list`：切换会话列表；打开时拉取并填充 64 行槽。
+    async fn toggle_session_list(&self) -> String {
+        let visible = {
+            let inner = self.inner.lock().await;
+            inner.list_visible
+        };
+        if visible {
+            let mut inner = self.inner.lock().await;
+            inner.link.send(&hud::set_visible(hud::EL_LIST, false)).await;
+            inner.list_visible = false;
+            drop(inner);
+            self.hud_status("已关闭会话列表").await;
+            return "hidden".into();
+        }
+
+        let cfg = self.cfg.clone();
+        let fetched = tokio::task::spawn_blocking(move || -> Result<Vec<SessionInfo>, String> {
+            let ep = opencode::discover(&cfg).ok_or_else(|| "未发现 OpenCode 端点".to_string())?;
+            opencode::list_sessions(&ep, hud::LIST_ROWS as u32, cfg.opencode.directory.as_deref())
+                .map_err(|e| e.to_string())
+        })
+        .await;
+
+        let list = match fetched {
+            Ok(Ok(l)) => l,
+            Ok(Err(e)) => {
+                self.hud_status(&format!("会话列表失败：{e}")).await;
+                return format!("err: {e}");
+            }
+            Err(e) => {
+                self.hud_status(&format!("会话列表失败：{e}")).await;
+                return format!("err: {e}");
+            }
+        };
+
+        let n = list.len();
+        {
+            let mut inner = self.inner.lock().await;
+            for i in 0..hud::LIST_ROWS {
+                let (text, vis) = match list.get(i) {
+                    Some(s) => (s.row_label(), true),
+                    None => (String::new(), false),
+                };
+                inner.link.send(&hud::set_text(&hud::list_row_id(i), &text)).await;
+                inner.link.send(&hud::set_visible(&hud::list_row_id(i), vis)).await;
+            }
+            inner.link.send(&hud::set_visible(hud::EL_LIST, true)).await;
+            inner.sessions = list;
+            inner.list_visible = true;
+        }
+        self.hud_status(&format!("会话列表（{n}）")).await;
+        format!("ok: {n}")
+    }
+
+    /// `act select N`：选择列表第 N 项并持久化。
+    async fn select_session_index(&self, n: usize) -> String {
+        let (id, title) = {
+            let inner = self.inner.lock().await;
+            match inner.sessions.get(n) {
+                Some(s) => (s.id.clone(), s.title.clone()),
+                None => return "out-of-range".into(),
+            }
+        };
+        if let Ok(mut st) = PersistedState::load() {
+            st.session = Some(id.clone());
+            let _ = st.save();
+        }
+        {
+            let mut inner = self.inner.lock().await;
+            inner.session = Some(id.clone());
+            inner.link.send(&hud::set_visible(hud::EL_LIST, false)).await;
+            inner.list_visible = false;
+        }
+        self.hud_session().await;
+        let title = if title.trim().is_empty() { id.clone() } else { title };
+        self.hud_status(&format!("已选择会话：{title}")).await;
+        "ok".into()
     }
 
     async fn start(&self, kind: Kind) -> String {

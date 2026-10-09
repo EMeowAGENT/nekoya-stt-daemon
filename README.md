@@ -12,9 +12,9 @@ WayVR 里显示实时字幕。
 | ---- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | P0   | 骨架 + 纯逻辑模块（协议编解码 / 状态机 / 按钮动作 / 配置 / 状态 / OpenCode 端点发现）+ 单测 + `doctor` 自检 | ✅                                 |
 | P1   | 音频采集 → 千问实时转写（transcribe，终端打印）                                                             | ✅（联网冒烟需 DASHSCOPE_API_KEY） |
-| P2   | WayVR 字幕面板 + PTT 链路                                                                                   | ⬜                                 |
-| P3   | 剪贴板 / OSC / 虚拟键盘动作                                                                                 | ⬜                                 |
-| P4   | OpenCode 会话列表与推送                                                                                     | ⬜                                 |
+| P2   | WayVR 字幕面板 + PTT 链路（`run` + 控制 socket + IPC，mock 集成测试）                                       | ✅                                 |
+| P3   | 剪贴板 / OSC（sinks）+ 虚拟键盘动作（面板 `::SendKey`）                                                     | ✅                                 |
+| P4   | OpenCode 会话列表 / 选择 / 推送（`act push`、手表长按）                                                     | ✅                                 |
 | P5   | systemd 常驻、容错、词库                                                                                    | ⬜                                 |
 
 ## 架构
@@ -101,14 +101,28 @@ makepkg -si
 ### 守护进程与控制通道
 
 ```sh
-nekoya-stt run            # 常驻；监听 $XDG_RUNTIME_DIR/nekoya-stt.sock
-nekoya-stt status         # 读配置/状态
+nekoya-stt run                 # 常驻；监听 $XDG_RUNTIME_DIR/nekoya-stt.sock
+nekoya-stt status              # 读配置/状态
+nekoya-stt ctl status          # 通过控制通道查询运行中的 daemon（无需 WayVR）
+nekoya-stt ctl act list        # 拉取会话列表（填充面板）
+nekoya-stt ctl act push        # 推送最近终稿到所选会话
+nekoya-stt opencode-selftest   # 列根会话；可加 --session <id> --send <文本>
+nekoya-stt wayvr-selftest      # 连 WayVR IPC 发一条面板文字（配合 mock 验证）
 ```
 
 控制通道命令（面板/手表通过 `::ShellExec` 调用，也可手动）： `watch-down`
 `watch-up` `ptt-down` `ptt-up` `show` `status` `act copy` `act osc` `act push`
 `act list` `act select <n>` （`Ctrl+V`/`回车` 由面板自带的 `::SendKey`
 完成，不经过本通道。）
+
+`ctl` 常用：
+
+```sh
+nekoya-stt ctl watch-down      # 模拟手表按下（开始录制）
+nekoya-stt ctl watch-up        # 松手（短按丢弃 / 长按推送）
+nekoya-stt ctl act list        # 打开/关闭会话列表
+nekoya-stt ctl act select 0    # 选择列表第 0 项并持久化到 state.toml
+```
 
 ### 桌面预览面板（不开 WayVR）
 

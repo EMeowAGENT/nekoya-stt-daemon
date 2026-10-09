@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# 跑全部模块测试脚本。
+# 跑全部模块测试脚本（每个脚本带 180s 超时护栏）。
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 rc=0
 for s in "$DIR"/[0-9][0-9]-*.sh; do
-	[[ "$(basename "$s")" == "00-lib.sh" ]] && continue
+	base="$(basename "$s")"
+	[[ "$base" == "00-lib.sh" ]] && continue
 	echo
-	echo "######################## $(basename "$s") ########################"
-	if ! bash "$s"; then
+	echo "######################## $base ########################"
+	if ! timeout 180 bash "$s"; then
 		rc=1
-		echo "!!! FAILED: $(basename "$s")"
+		echo "!!! FAILED/TIMEOUT: $base"
 	fi
 done
 echo
