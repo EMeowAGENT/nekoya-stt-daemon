@@ -14,6 +14,7 @@ pub mod engine;
 pub mod hud;
 pub mod opencode;
 pub mod state;
+pub mod tls;
 pub mod wayvr_ipc;
 
 /// 共享的运行时路径 / 环境变量名。

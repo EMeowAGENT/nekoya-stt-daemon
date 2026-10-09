@@ -25,6 +25,8 @@ base64 = "0.23"
 futures-util = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+# rustls 0.23 必须显式启用并安装一个 CryptoProvider（否则 WSS 握手 panic）。
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 
 [profile.release]
 lto = true

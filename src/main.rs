@@ -50,6 +50,8 @@ enum Cmd {
 }
 
 fn main() -> Result<()> {
+    // rustls 0.23：任何 WSS 握手前必须先安装默认 CryptoProvider。
+    nekoya_stt::tls::install_crypto_provider();
     let cli = Cli::parse();
     match cli.cmd {
         Cmd::Run => {
