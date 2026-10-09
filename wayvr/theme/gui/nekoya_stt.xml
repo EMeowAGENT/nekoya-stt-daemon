@@ -60,6 +60,7 @@
 
       <rectangle macro="bg" padding="6">
         <div id="session_list" display="none" flex_direction="column" overflow_y="scroll" height="320" gap="2">
+          <Button macro="rowbtn" id="btn_close_list" text="关闭列表" _press="::ShellExec /usr/bin/nekoya-stt act list" />
           <Button macro="rowbtn" id="session_row_0" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 0" />
           <Button macro="rowbtn" id="session_row_1" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 1" />
           <Button macro="rowbtn" id="session_row_2" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 2" />

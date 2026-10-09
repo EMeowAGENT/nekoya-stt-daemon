@@ -11,7 +11,7 @@ echo "== [04] panel xml ($XML) =="
 }
 
 fail=0
-need_ids=(transcript status session session_list btn_ptt btn_copy btn_osc btn_paste btn_enter btn_push btn_sessions)
+need_ids=(transcript status session session_list btn_ptt btn_copy btn_osc btn_paste btn_enter btn_push btn_sessions btn_close_list)
 for id in "${need_ids[@]}"; do
 	if grep -q "id=\"$id\"" "$XML"; then
 		echo "  ok   id=$id"
