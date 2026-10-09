@@ -1,18 +1,20 @@
 //! nekoya-stt CLI。
 //!
-//! P0 范围：配置/状态/协议/状态机（纯逻辑，含单测）+ 环境自检（`doctor`）。
-//! 后续阶段：`run`（常驻守护进程）、`sessions`/`use`（OpenCode HTTP）。
+//! P0：配置/状态/协议/状态机（纯逻辑 + 单测）+ `doctor`。
+//! P1：`transcribe`（音频 → 千问实时转写，终端打印）。
+//! 后续：`run`（常驻守护进程）、`sessions`/`use`（OpenCode HTTP）。
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use nekoya_stt::{config, config::Config, opencode, state::State};
+use nekoya_stt::{asr, audio, config, config::Config, opencode, state::State};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 #[derive(Parser)]
-#[command(
-    name = "nekoya-stt",
-    version,
-    about = "语音识别 → 剪贴板 / VRChat OSC / OpenCode / WayVR 字幕面板"
-)]
+#[command(name = "nekoya-stt", version, about = "语音识别 → 剪贴板 / VRChat OSC / OpenCode / WayVR 字幕面板")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -24,6 +26,18 @@ enum Cmd {
     Run,
     /// 环境与连通性自检
     Doctor,
+    /// 音频 → 千问实时转写（P1，终端打印）
+    Transcribe {
+        /// 回放原始 PCM16/16k/mono 文件（否则用 pw-record 采集麦克风）
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// 使用服务端 VAD 自动断句（默认手动 commit）
+        #[arg(long)]
+        auto: bool,
+        /// 离线替身：不联网、不采集，直接输出固定事件（验证管线）
+        #[arg(long)]
+        fake: bool,
+    },
     /// 列出 OpenCode 会话（需要服务在运行）
     Sessions,
     /// 选择 OpenCode 会话（持久化到 state.toml）
@@ -40,24 +54,149 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Run => {
             let cfg = Config::load()?;
-            println!("nekoya-stt: run 主体（音频/ASR/控制 socket）将在后续阶段实现。");
+            println!("nekoya-stt: run 主体（常驻守护进程/控制 socket）将在后续阶段实现。");
             println!("  模型      : {}", cfg.qwen.model);
             println!("  端点      : {}", cfg.qwen.endpoint);
-            println!(
-                "  WayVR     : {}",
-                if cfg.wayvr.enabled {
-                    "启用"
-                } else {
-                    "禁用（默认）"
-                }
-            );
-            anyhow::bail!("run 尚未实现（P0 骨架）");
+            println!("  WayVR     : {}", if cfg.wayvr.enabled { "启用" } else { "禁用（默认）" });
+            anyhow::bail!("run 尚未实现");
         }
         Cmd::Doctor => doctor(),
+        Cmd::Transcribe { file, auto, fake } => transcribe(file, auto, fake),
         Cmd::Sessions => sessions(),
         Cmd::Use { id } => select_session(&id),
         Cmd::Status => status(),
     }
+}
+
+fn print_event(ev: &asr::AsrEvent) {
+    match ev {
+        asr::AsrEvent::SessionReady => println!("[会话] 已就绪"),
+        asr::AsrEvent::Preview(t) => println!("[预览] {t}"),
+        asr::AsrEvent::Final(t) => println!("[终稿] {t}"),
+        asr::AsrEvent::Error(e) => eprintln!("[错误] {e}"),
+        asr::AsrEvent::Finished => println!("[会话] 结束"),
+        asr::AsrEvent::Other => {}
+    }
+}
+
+fn load_corpus(cfg: &Config) -> Option<String> {
+    if !cfg.corpus.enabled {
+        return None;
+    }
+    let text = std::fs::read_to_string(config::lexicon_file()).ok()?;
+    let joined = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if joined.is_empty() {
+        None
+    } else {
+        Some(joined)
+    }
+}
+
+fn transcribe(file: Option<PathBuf>, auto: bool, fake: bool) -> Result<()> {
+    let cfg = Config::load()?;
+    let mode = if auto { asr::Mode::Vad } else { asr::Mode::Manual };
+    let from_file = file.is_some();
+
+    let source: Option<Box<dyn audio::AudioSource + Send>> = if fake {
+        None
+    } else {
+        Some(match &file {
+            Some(p) => Box::new(audio::FileSource::open(p)?),
+            None => Box::new(audio::PwRecordSource::spawn(cfg.audio.source.as_deref())?),
+        })
+    };
+
+    let (audio_tx, audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    let (evt_tx, mut evt_rx) = tokio::sync::mpsc::unbounded_channel::<asr::AsrEvent>();
+    let stop = Arc::new(AtomicBool::new(false));
+
+    // 采集线程：按 100ms 节拍把 PCM 块送进通道（文件回放按时序，麦克风实时）。
+    if let Some(source) = source {
+        let stop = stop.clone();
+        let chunk = audio::CHUNK_BYTES;
+        thread::spawn(move || {
+            let mut source = source;
+            let mut buf = vec![0u8; chunk];
+            loop {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                match source.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if audio_tx.blocking_send(buf[..n].to_vec()).is_err() {
+                            break;
+                        }
+                        if from_file {
+                            thread::sleep(Duration::from_millis(audio::CHUNK_MS));
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            // audio_tx 析构 → 关闭通道，识别端据此收尾
+        });
+    }
+
+    // 麦克风模式：回车停止。
+    if !from_file && !fake {
+        let stop = stop.clone();
+        thread::spawn(move || {
+            let mut line = String::new();
+            let _ = std::io::stdin().read_line(&mut line);
+            stop.store(true, Ordering::Relaxed);
+        });
+    }
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        // Ctrl+C 也可停止采集。
+        {
+            let stop = stop.clone();
+            tokio::spawn(async move {
+                let _ = tokio::signal::ctrl_c().await;
+                stop.store(true, Ordering::Relaxed);
+            });
+        }
+
+        if fake {
+            for ev in asr::fake_events("你好，这是一次离线冒烟测试。") {
+                if evt_tx.send(ev).is_err() {
+                    break;
+                }
+            }
+            drop(evt_tx);
+            while let Some(ev) = evt_rx.recv().await {
+                print_event(&ev);
+            }
+            return Ok(());
+        }
+
+        let key = Config::api_key().unwrap_or_default();
+        if key.is_empty() {
+            anyhow::bail!("缺少 DASHSCOPE_API_KEY（注入环境变量后重试）");
+        }
+        let acfg = asr::AsrConfig {
+            endpoint: cfg.qwen.endpoint.clone(),
+            model: cfg.qwen.model.clone(),
+            api_key: key,
+            language: cfg.qwen.language.clone(),
+            corpus: load_corpus(&cfg),
+            vad_silence_ms: 800,
+            vad_threshold: 0.2,
+        };
+        let run = tokio::spawn(async move { asr::transcribe(acfg, mode, audio_rx, evt_tx).await });
+        while let Some(ev) = evt_rx.recv().await {
+            print_event(&ev);
+        }
+        run.await??;
+        Ok(())
+    })
 }
 
 fn doctor() -> Result<()> {
@@ -67,28 +206,14 @@ fn doctor() -> Result<()> {
     println!(
         "配置文件    : {} ({})",
         cfg_path.display(),
-        if cfg_path.is_file() {
-            "存在"
-        } else {
-            "缺失，用默认值"
-        }
+        if cfg_path.is_file() { "存在" } else { "缺失，用默认值" }
     );
     let cfg = Config::load()?;
     println!("模型        : {}", cfg.qwen.model);
     println!("端点        : {}", cfg.qwen.endpoint);
     println!("OSC 端口    : {}", cfg.osc.port);
-    println!(
-        "WayVR 联动  : {}",
-        if cfg.wayvr.enabled {
-            "启用"
-        } else {
-            "禁用（默认）"
-        }
-    );
-    println!(
-        "ITN         : {}",
-        if cfg.itn { "开" } else { "关（默认）" }
-    );
+    println!("WayVR 联动  : {}", if cfg.wayvr.enabled { "启用" } else { "禁用（默认）" });
+    println!("ITN         : {}", if cfg.itn { "开" } else { "关（默认）" });
 
     match Config::api_key() {
         Some(_) => println!("DASHSCOPE_API_KEY : 已设置"),
@@ -102,25 +227,16 @@ fn doctor() -> Result<()> {
         if lex.is_file() { "存在" } else { "缺失" }
     );
 
-    // WayVR IPC（抽象 socket）
     match probe_wayvr() {
         Ok(true) => println!("WayVR IPC   : 可连接"),
         Ok(false) => println!("WayVR IPC   : 未运行（可接受，默认禁用联动）"),
         Err(e) => println!("WayVR IPC   : 探测失败: {e}"),
     }
 
-    // OpenCode 发现
     match discover_opencode(&cfg) {
         Some(ep) => {
-            println!(
-                "OpenCode    : {}（鉴权 {}）",
-                ep.url,
-                if ep.password.is_some() { "有" } else { "无" }
-            );
-            println!(
-                "              可达: {}",
-                if tcp_reachable(&ep.url) { "是" } else { "否" }
-            );
+            println!("OpenCode    : {}（鉴权 {}）", ep.url, if ep.password.is_some() { "有" } else { "无" });
+            println!("              可达: {}", if tcp_reachable(&ep.url) { "是" } else { "否" });
         }
         None => println!("OpenCode    : 未发现端点（服务可能未运行）"),
     }
@@ -132,26 +248,9 @@ fn status() -> Result<()> {
     let cfg = Config::load()?;
     let st = State::load()?;
     println!("模型        : {}", cfg.qwen.model);
-    println!(
-        "WayVR       : {}",
-        if cfg.wayvr.enabled {
-            "启用"
-        } else {
-            "禁用"
-        }
-    );
-    println!(
-        "当前会话    : {}",
-        st.session.as_deref().unwrap_or("（未选择）")
-    );
-    println!(
-        "密钥        : {}",
-        if Config::api_key().is_some() {
-            "已设置"
-        } else {
-            "缺失"
-        }
-    );
+    println!("WayVR       : {}", if cfg.wayvr.enabled { "启用" } else { "禁用" });
+    println!("当前会话    : {}", st.session.as_deref().unwrap_or("（未选择）"));
+    println!("密钥        : {}", if Config::api_key().is_some() { "已设置" } else { "缺失" });
     Ok(())
 }
 
@@ -191,12 +290,12 @@ fn probe_wayvr() -> Result<bool> {
     }
 }
 
-fn opencode_state_file() -> std::path::PathBuf {
+fn opencode_state_file() -> PathBuf {
     let state_home = std::env::var_os("XDG_STATE_HOME")
-        .map(std::path::PathBuf::from)
+        .map(PathBuf::from)
         .unwrap_or_else(|| {
             std::env::var_os("HOME")
-                .map(|h| std::path::PathBuf::from(h).join(".local/state"))
+                .map(|h| PathBuf::from(h).join(".local/state"))
                 .unwrap_or_default()
         });
     state_home.join("opencode/service.json")
@@ -204,8 +303,7 @@ fn opencode_state_file() -> std::path::PathBuf {
 
 fn discover_opencode(cfg: &Config) -> Option<opencode::Endpoint> {
     let reg = std::fs::read_to_string(opencode_state_file()).ok();
-    let settings =
-        std::fs::read_to_string(config::xdg_config_home().join("opencode/service.json")).ok();
+    let settings = std::fs::read_to_string(config::xdg_config_home().join("opencode/service.json")).ok();
     opencode::resolve(
         cfg.opencode.url.as_deref(),
         cfg.opencode.password.as_deref(),
@@ -216,20 +314,14 @@ fn discover_opencode(cfg: &Config) -> Option<opencode::Endpoint> {
 }
 
 fn tcp_reachable(url: &str) -> bool {
-    let rest = url
-        .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))
-        .unwrap_or(url);
+    let rest = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")).unwrap_or(url);
     let hostport = rest.split('/').next().unwrap_or(rest);
     let (host, port) = match hostport.rsplit_once(':') {
         Some((h, p)) => (h.to_string(), p.parse::<u16>().unwrap_or(80)),
         None => (hostport.to_string(), 80),
     };
     use std::net::{TcpStream, ToSocketAddrs};
-    use std::time::Duration;
-    let Ok(mut addrs) = (host.as_str(), port).to_socket_addrs() else {
-        return false;
-    };
+    let Ok(mut addrs) = (host.as_str(), port).to_socket_addrs() else { return false };
     match addrs.next() {
         Some(addr) => TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok(),
         None => false,

@@ -7,6 +7,8 @@
 //!   任何真实 IO，便于单元测试与 mock 替身。
 
 pub mod actions;
+pub mod asr;
+pub mod audio;
 pub mod config;
 pub mod engine;
 pub mod hud;
