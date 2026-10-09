@@ -1,0 +1,132 @@
+<layout version="2">
+  <!--
+    nekoya_stt — 字幕面板 + 主控面板（模板，供手动复制到 ~/.config/wayvr/theme/gui/）
+
+    - 默认隐藏；由 daemon 通过 IPC WlxOverlaySetVisible 显示（ensure-on，非 toggle）。
+    - daemon 只 SetText/SetVisible 文字元素，绝不改 transform/positioning。
+    - 所有 ShellExec 用绝对路径 /usr/bin/nekoya-stt（可执行文件安装位）。
+    - 元素 id 需与 src/hud.rs 常量一致：transcript / status / session / session_list / session_row_N。
+  -->
+  <macro name="bg" width="100%" color="background" border_color="outline" round="10" border="2" />
+  <macro name="btn" border="2" round="6" align_items="center" justify_content="center" padding="6" width="64" height="64" overflow="visible" />
+  <macro name="rowbtn" width="100%" border="1" round="4" padding="4" align_items="center" justify_content="center" />
+
+  <elements>
+    <div flex_direction="column" width="660" gap="6">
+
+      <rectangle macro="bg" padding="10" flex_direction="column" gap="4">
+        <label id="status" text="空闲" size="16" color="faded" />
+        <label id="session" text="会话：（未选择）" size="16" color="faded" />
+        <label id="transcript" wrap="1" size="20" text="" />
+      </rectangle>
+
+      <rectangle macro="bg" padding="10">
+        <div gap="8">
+          <Button macro="btn" id="btn_ptt" tooltip="PTT"
+            _press="::ShellExec /usr/bin/nekoya-stt act ptt-down"
+            _release="::ShellExec /usr/bin/nekoya-stt act ptt-up">
+            <sprite width="38" height="38" src_builtin="@/icons/mic.svg" />
+          </Button>
+          <Button macro="btn" id="btn_copy" tooltip="复制到剪贴板"
+            _press="::ShellExec /usr/bin/nekoya-stt act copy">
+            <sprite width="38" height="38" src_builtin="@/icons/paste.svg" />
+          </Button>
+          <Button macro="btn" id="btn_osc" tooltip="VRChat OSC"
+            _press="::ShellExec /usr/bin/nekoya-stt act osc">
+            <sprite width="38" height="38" src_builtin="@/icons/chat.svg" />
+          </Button>
+          <Button macro="btn" id="btn_paste" tooltip="Ctrl+V"
+            _press="::SendKey LCtrl down"
+            _press2="::SendKey V down"
+            _press3="::SendKey V up"
+            _press4="::SendKey LCtrl up">
+            <sprite width="38" height="38" src_builtin="@/icons/paste-go.svg" />
+          </Button>
+          <Button macro="btn" id="btn_enter" tooltip="回车"
+            _press="::SendKey Return down"
+            _release="::SendKey Return up">
+            <sprite width="38" height="38" src_builtin="@/keyboard/return.svg" />
+          </Button>
+          <Button macro="btn" id="btn_push" tooltip="推送到 OpenCode"
+            _press="::ShellExec /usr/bin/nekoya-stt act push">
+            <sprite width="38" height="38" src_builtin="@/icons/bell.svg" />
+          </Button>
+          <Button macro="btn" id="btn_sessions" tooltip="会话列表"
+            _press="::ShellExec /usr/bin/nekoya-stt act list">
+            <sprite width="38" height="38" src_builtin="@/icons/landscape.svg" />
+          </Button>
+        </div>
+      </rectangle>
+
+      <rectangle macro="bg" padding="6">
+        <div id="session_list" display="none" flex_direction="column" overflow_y="scroll" height="320" gap="2">
+          <Button macro="rowbtn" id="session_row_0" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 0" />
+          <Button macro="rowbtn" id="session_row_1" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 1" />
+          <Button macro="rowbtn" id="session_row_2" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 2" />
+          <Button macro="rowbtn" id="session_row_3" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 3" />
+          <Button macro="rowbtn" id="session_row_4" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 4" />
+          <Button macro="rowbtn" id="session_row_5" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 5" />
+          <Button macro="rowbtn" id="session_row_6" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 6" />
+          <Button macro="rowbtn" id="session_row_7" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 7" />
+          <Button macro="rowbtn" id="session_row_8" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 8" />
+          <Button macro="rowbtn" id="session_row_9" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 9" />
+          <Button macro="rowbtn" id="session_row_10" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 10" />
+          <Button macro="rowbtn" id="session_row_11" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 11" />
+          <Button macro="rowbtn" id="session_row_12" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 12" />
+          <Button macro="rowbtn" id="session_row_13" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 13" />
+          <Button macro="rowbtn" id="session_row_14" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 14" />
+          <Button macro="rowbtn" id="session_row_15" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 15" />
+          <Button macro="rowbtn" id="session_row_16" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 16" />
+          <Button macro="rowbtn" id="session_row_17" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 17" />
+          <Button macro="rowbtn" id="session_row_18" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 18" />
+          <Button macro="rowbtn" id="session_row_19" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 19" />
+          <Button macro="rowbtn" id="session_row_20" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 20" />
+          <Button macro="rowbtn" id="session_row_21" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 21" />
+          <Button macro="rowbtn" id="session_row_22" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 22" />
+          <Button macro="rowbtn" id="session_row_23" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 23" />
+          <Button macro="rowbtn" id="session_row_24" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 24" />
+          <Button macro="rowbtn" id="session_row_25" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 25" />
+          <Button macro="rowbtn" id="session_row_26" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 26" />
+          <Button macro="rowbtn" id="session_row_27" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 27" />
+          <Button macro="rowbtn" id="session_row_28" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 28" />
+          <Button macro="rowbtn" id="session_row_29" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 29" />
+          <Button macro="rowbtn" id="session_row_30" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 30" />
+          <Button macro="rowbtn" id="session_row_31" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 31" />
+          <Button macro="rowbtn" id="session_row_32" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 32" />
+          <Button macro="rowbtn" id="session_row_33" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 33" />
+          <Button macro="rowbtn" id="session_row_34" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 34" />
+          <Button macro="rowbtn" id="session_row_35" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 35" />
+          <Button macro="rowbtn" id="session_row_36" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 36" />
+          <Button macro="rowbtn" id="session_row_37" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 37" />
+          <Button macro="rowbtn" id="session_row_38" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 38" />
+          <Button macro="rowbtn" id="session_row_39" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 39" />
+          <Button macro="rowbtn" id="session_row_40" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 40" />
+          <Button macro="rowbtn" id="session_row_41" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 41" />
+          <Button macro="rowbtn" id="session_row_42" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 42" />
+          <Button macro="rowbtn" id="session_row_43" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 43" />
+          <Button macro="rowbtn" id="session_row_44" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 44" />
+          <Button macro="rowbtn" id="session_row_45" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 45" />
+          <Button macro="rowbtn" id="session_row_46" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 46" />
+          <Button macro="rowbtn" id="session_row_47" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 47" />
+          <Button macro="rowbtn" id="session_row_48" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 48" />
+          <Button macro="rowbtn" id="session_row_49" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 49" />
+          <Button macro="rowbtn" id="session_row_50" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 50" />
+          <Button macro="rowbtn" id="session_row_51" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 51" />
+          <Button macro="rowbtn" id="session_row_52" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 52" />
+          <Button macro="rowbtn" id="session_row_53" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 53" />
+          <Button macro="rowbtn" id="session_row_54" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 54" />
+          <Button macro="rowbtn" id="session_row_55" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 55" />
+          <Button macro="rowbtn" id="session_row_56" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 56" />
+          <Button macro="rowbtn" id="session_row_57" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 57" />
+          <Button macro="rowbtn" id="session_row_58" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 58" />
+          <Button macro="rowbtn" id="session_row_59" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 59" />
+          <Button macro="rowbtn" id="session_row_60" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 60" />
+          <Button macro="rowbtn" id="session_row_61" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 61" />
+          <Button macro="rowbtn" id="session_row_62" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 62" />
+          <Button macro="rowbtn" id="session_row_63" text="" display="none" _press="::ShellExec /usr/bin/nekoya-stt act select 63" />
+        </div>
+      </rectangle>
+
+    </div>
+  </elements>
+</layout>

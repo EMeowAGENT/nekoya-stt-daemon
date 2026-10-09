@@ -1,0 +1,32 @@
+# nekoya-stt 配置模板
+# 复制到 ~/.config/nekoya-stt/config.toml 后按需修改。
+# 密钥不在此文件：只从环境变量 DASHSCOPE_API_KEY 读取。
+
+itn = false            # 本地 ITN 后处理（v1 未实现规则，保持关闭）
+
+[audio]
+# source = "alsa_input.pci-0000_00_1f.3.analog-stereo"  # 留空 = 跟随系统默认输入
+sample_rate = 16000
+preroll_ms = 300       # 预滚缓冲，避免吞首字
+
+[qwen]
+model = "qwen3-asr-flash-realtime"
+endpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+# language = "zh"      # 留空 = 自动语种
+
+[corpus]
+enabled = true         # 把 ~/.config/nekoya-stt/lexicon.txt 作为上下文词表发送
+
+[osc]
+port = 9000
+chatbox_max_chars = 144
+
+[wayvr]
+enabled = false        # 默认禁用：WayVR 不一定在运行
+client_name = "nekoya-stt"
+
+[opencode]
+username = "opencode"
+# url = "http://127.0.0.1:49374"   # 覆盖自动发现
+# password = "..."                 # 覆盖 service.json（不推荐写死）
+# directory = "/home/EMeowSystem/nekoya-stt-daemon"  # 可选：只列该目录会话

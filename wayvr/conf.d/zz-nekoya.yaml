@@ -1,0 +1,4 @@
+# ~/.config/wayvr/conf.d/zz-nekoya.yaml
+# 由用户手动放置。启用 nekoya_stt 自定义面板（模板见 wayvr/theme/gui/nekoya_stt.xml）。
+custom_panels:
+  - "nekoya_stt"

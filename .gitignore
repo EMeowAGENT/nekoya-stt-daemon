@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+*.log
+
+# secrets / local state must never be committed
+.env
+**/*.env
+env
+state.toml
+lexicon.txt

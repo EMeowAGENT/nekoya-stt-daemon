@@ -1,0 +1,20 @@
+[Unit]
+Description=nekoya-stt 语音识别守护进程（千问实时 ASR）
+Documentation=https://github.com/EMeowAGENT/nekoya-stt-daemon
+# 绑到图形会话：作为 systemd --user 服务拿到 WAYLAND_DISPLAY，才能写宿主剪贴板。
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/nekoya-stt run
+# 密钥只从环境变量注入，绝不写入仓库/包。
+EnvironmentFile=-%h/.config/nekoya-stt/env
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nekoya-stt
+
+[Install]
+WantedBy=graphical-session.target

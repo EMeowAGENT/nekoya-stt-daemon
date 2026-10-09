@@ -1,0 +1,27 @@
+[package]
+name = "nekoya-stt"
+version = "0.1.0"
+edition = "2021"
+description = "Speech-to-text daemon: Qwen realtime ASR feeding clipboard / VRChat OSC / OpenCode, with a WayVR subtitle panel"
+license = "MIT"
+repository = "https://github.com/EMeowAGENT/nekoya-stt-daemon"
+default-run = "nekoya-stt"
+
+[[bin]]
+name = "nekoya-stt"
+path = "src/main.rs"
+
+[lib]
+name = "nekoya_stt"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+lto = true
+strip = true
