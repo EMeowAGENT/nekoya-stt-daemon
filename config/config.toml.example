@@ -30,3 +30,7 @@ username = "opencode"
 # url = "http://127.0.0.1:49374"   # 覆盖自动发现
 # password = "..."                 # 覆盖 service.json（不推荐写死）
 # directory = "/home/EMeowSystem/nekoya-stt-daemon"  # 可选：只列该目录会话
+
+[ptt]
+# 手表键：按住超过该毫秒数才开始提交 STT（此前仅本地缓冲）；也是"短按丢弃"阈值。
+start_after_ms = 500

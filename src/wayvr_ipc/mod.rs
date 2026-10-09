@@ -12,6 +12,8 @@
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
 
+pub mod conn;
+
 pub const PROTOCOL_VERSION: u32 = 5;
 pub const CONNECTION_MAGIC: &str = "wayvr_ipc";
 /// WayVR 抽象 socket 名（前导 NUL 由连接层补上）。

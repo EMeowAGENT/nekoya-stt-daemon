@@ -8,14 +8,14 @@ WayVR 里显示实时字幕。
 
 ## 状态
 
-| 阶段 | 内容                                                                                                        | 状态 |
-| ---- | ----------------------------------------------------------------------------------------------------------- | ---- |
-| P0   | 骨架 + 纯逻辑模块（协议编解码 / 状态机 / 按钮动作 / 配置 / 状态 / OpenCode 端点发现）+ 单测 + `doctor` 自检 | ✅   |
-| P1   | 音频采集 → 千问实时转写（transcribe，终端打印） | ✅（联网冒烟需 DASHSCOPE_API_KEY） |
-| P2   | WayVR 字幕面板 + PTT 链路                                                                                   | ⬜   |
-| P3   | 剪贴板 / OSC / 虚拟键盘动作                                                                                 | ⬜   |
-| P4   | OpenCode 会话列表与推送                                                                                     | ⬜   |
-| P5   | systemd 常驻、容错、词库                                                                                    | ⬜   |
+| 阶段 | 内容                                                                                                        | 状态                               |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| P0   | 骨架 + 纯逻辑模块（协议编解码 / 状态机 / 按钮动作 / 配置 / 状态 / OpenCode 端点发现）+ 单测 + `doctor` 自检 | ✅                                 |
+| P1   | 音频采集 → 千问实时转写（transcribe，终端打印）                                                             | ✅（联网冒烟需 DASHSCOPE_API_KEY） |
+| P2   | WayVR 字幕面板 + PTT 链路                                                                                   | ⬜                                 |
+| P3   | 剪贴板 / OSC / 虚拟键盘动作                                                                                 | ⬜                                 |
+| P4   | OpenCode 会话列表与推送                                                                                     | ⬜                                 |
+| P5   | systemd 常驻、容错、词库                                                                                    | ⬜                                 |
 
 ## 架构
 
@@ -79,15 +79,36 @@ makepkg -si
 在**手表**上加一个 STT 键（自行修改 `~/.config/wayvr/theme/gui/watch.xml`）：
 
 ```xml
-<!-- 短按：显示主面板；长按：自动识别 → 识别完自动推送到 OpenCode -->
+<!-- 按下：开始录制；松手：短按(<500ms)丢弃并显示主面板，长按(≥500ms)收尾并推送 OpenCode -->
 <Button id="btn_stt"
-  _short_release="::ShellExec /usr/bin/nekoya-stt act show"
-  _long_release="::ShellExec /usr/bin/nekoya-stt act auto">
+  _press="::ShellExec /usr/bin/nekoya-stt act watch-down"
+  _release="::ShellExec /usr/bin/nekoya-stt act watch-up">
   <sprite width="38" height="38" src_builtin="@/icons/mic.svg" />
 </Button>
 ```
 
-> `long_press_duration` 是 WayVR 全局配置（默认 1.0s），无法按按钮单独设置。
+行为（阈值 `ptt.start_after_ms`，默认 500，见配置）：
+
+- **按下**：开始录制（仅本地缓冲，**不开**识别连接）。
+- 按住
+  **≥500ms**：才建立识别会话，并把此前缓冲的音频补发（**不丢首字、不浪费连接**）。
+- **松手 <500ms**：丢弃本次录音，并确保显示主面板。
+- **松手 ≥500ms**：收尾并把终稿**推送到 OpenCode 并发送**。
+
+> 不使用 WayVR 的 `_short_release`/`_long_release`（那是按它自己的
+> `long_press_duration` 判定）；长短由 daemon 用 `ptt.start_after_ms` 计时。
+
+### 守护进程与控制通道
+
+```sh
+nekoya-stt run            # 常驻；监听 $XDG_RUNTIME_DIR/nekoya-stt.sock
+nekoya-stt status         # 读配置/状态
+```
+
+控制通道命令（面板/手表通过 `::ShellExec` 调用，也可手动）： `watch-down`
+`watch-up` `ptt-down` `ptt-up` `show` `status` `act copy` `act osc` `act push`
+`act list` `act select <n>` （`Ctrl+V`/`回车` 由面板自带的 `::SendKey`
+完成，不经过本通道。）
 
 ### 桌面预览面板（不开 WayVR）
 

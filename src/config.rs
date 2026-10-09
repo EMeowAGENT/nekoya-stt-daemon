@@ -16,6 +16,23 @@ pub struct Config {
     pub osc: Osc,
     pub wayvr: Wayvr,
     pub opencode: Opencode,
+    pub ptt: Ptt,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Ptt {
+    /// 手表键：按住超过该毫秒数才开始提交 STT（此前仅本地录制缓冲）。
+    /// 同时用作"短按丢弃"的阈值。
+    pub start_after_ms: u64,
+}
+
+impl Default for Ptt {
+    fn default() -> Self {
+        Self {
+            start_after_ms: 500,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

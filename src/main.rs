@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use nekoya_stt::{asr, audio, config, config::Config, opencode, state::State};
+use nekoya_stt::{asr, audio, config, config::Config, daemon, opencode, state::State};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -22,10 +22,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// 常驻守护进程（后续阶段实现）
+    /// 常驻守护进程（P2）
     Run,
     /// 环境与连通性自检
     Doctor,
+    /// WayVR IPC 自检：连上并发送一条面板文字 + ensure-on（离线，用 mock 服务验证）
+    WayvrSelftest {
+        /// 要写入 transcript 元素的文字
+        #[arg(default_value = "nekoya selftest")]
+        text: String,
+    },
     /// 音频 → 千问实时转写（P1，终端打印）
     Transcribe {
         /// 回放原始 PCM16/16k/mono 文件（否则用 pw-record 采集麦克风）
@@ -56,12 +62,10 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Run => {
             let cfg = Config::load()?;
-            println!("nekoya-stt: run 主体（常驻守护进程/控制 socket）将在后续阶段实现。");
-            println!("  模型      : {}", cfg.qwen.model);
-            println!("  端点      : {}", cfg.qwen.endpoint);
-            println!("  WayVR     : {}", if cfg.wayvr.enabled { "启用" } else { "禁用（默认）" });
-            anyhow::bail!("run 尚未实现");
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(daemon::run(cfg))
         }
+        Cmd::WayvrSelftest { text } => wayvr_selftest(text),
         Cmd::Doctor => doctor(),
         Cmd::Transcribe { file, auto, fake } => transcribe(file, auto, fake),
         Cmd::Sessions => sessions(),
@@ -79,6 +83,21 @@ fn print_event(ev: &asr::AsrEvent) {
         asr::AsrEvent::Finished => println!("[会话] 结束"),
         asr::AsrEvent::Other => {}
     }
+}
+
+fn wayvr_selftest(text: String) -> Result<()> {
+    use nekoya_stt::wayvr_ipc::conn::WayvrLink;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        let mut link = WayvrLink::new(true, "nekoya-selftest");
+        if !link.ensure().await {
+            anyhow::bail!("无法连接 WayVR IPC：{}", link.last_error().unwrap_or("unknown"));
+        }
+        link.send(&nekoya_stt::hud::set_text(nekoya_stt::hud::EL_TRANSCRIPT, &text)).await;
+        link.send(&nekoya_stt::hud::set_panel_visible(true)).await;
+        println!("已发送: SetText(transcript)=\"{text}\" + EnsureVisible");
+        Ok(())
+    })
 }
 
 fn load_corpus(cfg: &Config) -> Option<String> {

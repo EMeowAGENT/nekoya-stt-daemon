@@ -10,9 +10,11 @@ pub enum Phase {
     /// 空闲。
     #[default]
     Idle,
+    /// 已开始录制但尚未开识别流（手表键延迟开流）。
+    Armed,
     /// 主面板 PTT 手动模式（按住说话，松手 commit/finish）。
     PttListening,
-    /// 手表长按：手动 VAD 自动模式，说完自动收尾。
+    /// 手表键（按住说话，松手推送），或 VAD 扩展用法。
     AutoListening,
 }
 
@@ -25,8 +27,9 @@ impl Phase {
     pub fn label(self) -> &'static str {
         match self {
             Phase::Idle => "空闲",
+            Phase::Armed => "按住中…",
             Phase::PttListening => "聆听中…",
-            Phase::AutoListening => "自动聆听中…",
+            Phase::AutoListening => "聆听中…",
         }
     }
 }
@@ -81,6 +84,26 @@ impl Engine {
     /// 手表长按触发的自动识别。
     pub fn start_auto(&mut self) -> Result<(), StartError> {
         if self.phase.is_listening() {
+            return Err(StartError::Busy);
+        }
+        self.phase = Phase::AutoListening;
+        self.preview.clear();
+        Ok(())
+    }
+
+    /// 手表键按下：先进入 `Armed`（录制中、未开流）。
+    pub fn start_watch(&mut self) -> Result<(), StartError> {
+        if self.phase.is_listening() {
+            return Err(StartError::Busy);
+        }
+        self.phase = Phase::Armed;
+        self.preview.clear();
+        Ok(())
+    }
+
+    /// `Armed` → 开始实际识别流。
+    pub fn begin_stream(&mut self) -> Result<(), StartError> {
+        if self.phase != Phase::Armed {
             return Err(StartError::Busy);
         }
         self.phase = Phase::AutoListening;
@@ -145,6 +168,27 @@ mod tests {
         assert!(!e.finish(Some("   ".into())));
         assert_eq!(e.last_final(), Some("保留我"));
         assert_eq!(e.phase(), Phase::Idle);
+    }
+
+    #[test]
+    fn watch_armed_then_begin_stream() {
+        let mut e = Engine::new();
+        assert_eq!(e.start_watch(), Ok(()));
+        assert_eq!(e.phase(), Phase::Armed);
+        assert_eq!(e.start_watch(), Err(StartError::Busy));
+        assert_eq!(e.begin_stream(), Ok(()));
+        assert_eq!(e.phase(), Phase::AutoListening);
+        e.finish(Some("手表一条".into()));
+        assert_eq!(e.last_final(), Some("手表一条"));
+        assert_eq!(e.phase(), Phase::Idle);
+    }
+
+    #[test]
+    fn begin_stream_only_from_armed() {
+        let mut e = Engine::new();
+        assert_eq!(e.begin_stream(), Err(StartError::Busy));
+        e.start_ptt().unwrap();
+        assert_eq!(e.begin_stream(), Err(StartError::Busy));
     }
 
     #[test]
