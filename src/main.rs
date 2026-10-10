@@ -31,6 +31,9 @@ enum Cmd {
         /// 要写入 transcript 元素的文字
         #[arg(default_value = "nekoya selftest")]
         text: String,
+        /// 额外写入 N 行演示会话并展开列表（用于脱离 OpenCode 单独验证列表渲染）
+        #[arg(long)]
+        rows: Option<usize>,
     },
     /// 音频 → 千问实时转写（P1，终端打印）
     Transcribe {
@@ -83,7 +86,7 @@ fn main() -> Result<()> {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(daemon::run(cfg))
         }
-        Cmd::WayvrSelftest { text } => wayvr_selftest(text),
+        Cmd::WayvrSelftest { text, rows } => wayvr_selftest(text, rows),
         Cmd::Doctor => doctor(),
         Cmd::Transcribe { file, auto, fake } => transcribe(file, auto, fake),
         Cmd::Sessions => sessions(),
@@ -106,7 +109,8 @@ fn print_event(ev: &asr::AsrEvent) {
     }
 }
 
-fn wayvr_selftest(text: String) -> Result<()> {
+fn wayvr_selftest(text: String, rows: Option<usize>) -> Result<()> {
+    use nekoya_stt::hud;
     use nekoya_stt::wayvr_ipc::conn::WayvrLink;
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
@@ -114,9 +118,19 @@ fn wayvr_selftest(text: String) -> Result<()> {
         if !link.ensure().await {
             anyhow::bail!("无法连接 WayVR IPC：{}", link.last_error().unwrap_or("unknown"));
         }
-        link.send(&nekoya_stt::hud::set_text(nekoya_stt::hud::EL_TRANSCRIPT, &text)).await;
-        link.send(&nekoya_stt::hud::set_panel_visible(true)).await;
+        link.send(&hud::set_text(hud::EL_TRANSCRIPT, &text)).await;
+        link.send(&hud::set_panel_visible(true)).await;
         println!("已发送: SetText(transcript)=\"{text}\" + EnsureVisible");
+
+        if let Some(nr) = rows {
+            let nr = nr.min(hud::LIST_ROWS);
+            for i in 0..nr {
+                link.send(&hud::set_text(&hud::list_row_text_id(i), &format!("演示会话 {i}"))).await;
+                link.send(&hud::set_visible(&hud::list_row_id(i), true)).await;
+            }
+            link.send(&hud::set_visible(hud::EL_LIST, true)).await;
+            println!("已发送: {nr} 行演示会话 + 展开列表");
+        }
         Ok(())
     })
 }
@@ -314,8 +328,25 @@ fn select_session(id: &str) -> Result<()> {
     }
     let mut st = State::load()?;
     st.session = Some(id.to_string());
+    st.title = None;
+
+    // 尽量解析标题，供界面显示（不显示 id）。
+    if let Ok(cfg) = Config::load() {
+        if let Some(ep) = opencode::discover(&cfg) {
+            if let Ok(list) = opencode::list_sessions(&ep, 64, cfg.opencode.directory.as_deref()) {
+                if let Some(s) = list.iter().find(|s| s.id == id) {
+                    if !s.title.trim().is_empty() {
+                        st.title = Some(s.title.clone());
+                    }
+                }
+            }
+        }
+    }
     st.save()?;
-    println!("已选择会话: {id}");
+    match &st.title {
+        Some(t) => println!("已选择会话: {t}"),
+        None => println!("已选择会话（未取到标题，界面将只显示“已选择”）"),
+    }
     Ok(())
 }
 

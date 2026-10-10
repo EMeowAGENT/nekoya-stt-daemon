@@ -21,10 +21,12 @@ for id in "${need_ids[@]}"; do
 	fi
 done
 
-# 64 行槽
-rows=$(grep -c 'id="session_row_' "$XML" || true)
-if [[ "$rows" -eq 64 ]]; then echo "  ok   64 行槽"; else
-	echo "  FAIL 行槽数=$rows（期望 64）"
+# 16 行槽（行按钮 id=session_row_N；另有行内文本 label）
+rows=$(grep -c 'id="session_row_[0-9]*"' "$XML" || true)
+if [[ "$rows" -eq 16 ]]; then
+	echo "  ok   16 行槽"
+else
+	echo "  FAIL 行槽数=$rows（期望 16）"
 	fail=1
 fi
 

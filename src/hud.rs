@@ -11,13 +11,19 @@ pub const PANEL: &str = "nekoya_stt";
 /// 元素 id（需与 nekoya_stt.xml 一致）。
 pub const EL_TRANSCRIPT: &str = "transcript";
 pub const EL_STATUS: &str = "status";
+/// 顶部"当前会话名称"标签（显示标题，不显示 id）。
 pub const EL_SESSION: &str = "session";
 
 /// 会话列表区容器 id 与行槽。
 pub const EL_LIST: &str = "session_list";
-pub const LIST_ROWS: usize = 64;
+/// 可见行数（多则卡；16 与"可视区"一致）。
+pub const LIST_ROWS: usize = 16;
 pub fn list_row_id(i: usize) -> String {
     format!("session_row_{i}")
+}
+/// 行内文本 label 的 id（SetText 打这里，便于控制字号/高度）。
+pub fn list_row_text_id(i: usize) -> String {
+    format!("session_row_{i}_text")
 }
 
 /// 构造「设置某元素文字」的 IPC 包。
@@ -68,7 +74,8 @@ mod tests {
     #[test]
     fn list_row_ids() {
         assert_eq!(list_row_id(0), "session_row_0");
-        assert_eq!(list_row_id(63), "session_row_63");
-        assert_eq!(LIST_ROWS, 64);
+        assert_eq!(list_row_id(15), "session_row_15");
+        assert_eq!(list_row_text_id(3), "session_row_3_text");
+        assert_eq!(LIST_ROWS, 16);
     }
 }

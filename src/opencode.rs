@@ -42,14 +42,12 @@ pub struct SessionInfo {
 impl SessionInfo {
     /// 面板行显示文案（截断，避免过长）。
     pub fn row_label(&self) -> String {
-        let title = if self.title.trim().is_empty() {
-            "(无标题)"
+        let title = self.title.trim();
+        if title.is_empty() {
+            self.id.chars().take(12).collect()
         } else {
-            self.title.trim()
-        };
-        let title: String = title.chars().take(48).collect();
-        let short_id: String = self.id.chars().take(10).collect();
-        format!("{title}  [{short_id}]")
+            title.chars().take(40).collect()
+        }
     }
 }
 
@@ -332,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn row_label_truncates() {
+    fn row_label_shows_title_only() {
         let s = SessionInfo {
             id: "ses_0123456789".into(),
             title: "x".repeat(80),
@@ -340,8 +338,15 @@ mod tests {
             updated: 0,
         };
         let label = s.row_label();
-        assert!(label.contains("[ses_012345"));
-        assert!(label.chars().count() < 70);
+        assert_eq!(label.chars().count(), 40);
+        assert!(!label.contains("ses_"));
+        let untitled = SessionInfo {
+            id: "ses_abcdefghij".into(),
+            title: "".into(),
+            directory: None,
+            updated: 0,
+        };
+        assert_eq!(untitled.row_label(), "ses_abcdefgh");
     }
 
     #[test]

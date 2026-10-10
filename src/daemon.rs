@@ -50,14 +50,13 @@ struct Active {
 struct Inner {
     engine: Engine,
     session: Option<String>,
+    session_title: Option<String>,
     active: Option<Active>,
     link: WayvrLink,
     last_status: String,
     /// 最近一次拉取的会话列表（用于 `act select N`）。
     sessions: Vec<SessionInfo>,
     list_visible: bool,
-    /// 上一轮实际显示的行数（用于只关闭多出来的行，避免每次刷 64 行）。
-    prev_rows: usize,
 }
 
 #[derive(Clone)]
@@ -70,17 +69,20 @@ pub struct Daemon {
 impl Daemon {
     pub fn new(cfg: Config, corpus: Option<String>) -> Self {
         let link = WayvrLink::new(cfg.wayvr.enabled, cfg.wayvr.client_name.clone());
-        let session = PersistedState::load().ok().and_then(|s| s.session);
+        let (session, session_title) = match PersistedState::load() {
+            Ok(s) => (s.session, s.title),
+            Err(_) => (None, None),
+        };
         Self {
             inner: Arc::new(Mutex::new(Inner {
                 engine: Engine::new(),
                 session,
+                session_title,
                 active: None,
                 link,
                 last_status: "空闲".into(),
                 sessions: Vec::new(),
                 list_visible: false,
-                prev_rows: 0,
             })),
             cfg,
             corpus,
@@ -118,18 +120,22 @@ impl Daemon {
     }
 
     async fn hud_session(&self) {
-        let session = {
+        let (title, has_session) = {
             let inner = self.inner.lock().await;
-            inner.session.clone()
+            (inner.session_title.clone(), inner.session.is_some())
         };
-        let text = format!("会话：{}", session.as_deref().unwrap_or("（未选择）"));
+        let text = match title {
+            Some(t) if !t.trim().is_empty() => format!("会话：{t}"),
+            _ if has_session => "会话：（已选择）".to_string(),
+            _ => "会话：（未选择）".to_string(),
+        };
         let packet = hud::set_text(hud::EL_SESSION, &text);
         let mut inner = self.inner.lock().await;
         inner.link.send(&packet).await;
     }
 
     async fn link_add_init(&self) {
-        // 仅当启用且已连接时，补写一次会话/状态。
+        // 仅当启用且已连接时，补写一次会话名与状态。
         let connected = {
             let mut inner = self.inner.lock().await;
             inner.link.ensure().await
@@ -299,22 +305,30 @@ impl Daemon {
         let link_ok;
         {
             let mut inner = self.inner.lock().await;
-            let prev = inner.prev_rows.min(hud::LIST_ROWS);
-            // 只更新用到的行（含文本+显示），避免每次刷 64 行造成卡顿。
-            for i in 0..n {
-                let label = list[i].row_label();
-                inner.link.send(&hud::set_text(&hud::list_row_id(i), &label)).await;
-                inner.link.send(&hud::set_visible(&hud::list_row_id(i), true)).await;
-            }
-            // 关闭上一轮多出来、现在不再使用的行。
-            for i in n..prev {
-                inner.link.send(&hud::set_visible(&hud::list_row_id(i), false)).await;
+            // 行按钮默认可见（XML 里没有 display="none"），因此每轮都要显式收口：
+            // 用到的行写标题并显示；未使用的行清空并隐藏。
+            for i in 0..hud::LIST_ROWS {
+                match list.get(i) {
+                    Some(s) => {
+                        inner
+                            .link
+                            .send(&hud::set_text(&hud::list_row_text_id(i), &s.row_label()))
+                            .await;
+                        inner
+                            .link
+                            .send(&hud::set_visible(&hud::list_row_id(i), true))
+                            .await;
+                    }
+                    None => {
+                        inner.link.send(&hud::set_text(&hud::list_row_text_id(i), "")).await;
+                        inner.link.send(&hud::set_visible(&hud::list_row_id(i), false)).await;
+                    }
+                }
             }
             inner.link.send(&hud::set_visible(hud::EL_LIST, true)).await;
             link_ok = inner.link.is_connected();
             inner.sessions = list;
             inner.list_visible = true;
-            inner.prev_rows = n;
         }
         self.hud_status(&format!("会话列表（{n}）")).await;
         format!("ok: {n} link={}", if link_ok { 1 } else { 0 })
@@ -331,16 +345,17 @@ impl Daemon {
         };
         if let Ok(mut st) = PersistedState::load() {
             st.session = Some(id.clone());
+            st.title = Some(title.clone());
             let _ = st.save();
         }
         {
             let mut inner = self.inner.lock().await;
             inner.session = Some(id.clone());
+            inner.session_title = Some(title.clone());
             inner.link.send(&hud::set_visible(hud::EL_LIST, false)).await;
             inner.list_visible = false;
         }
         self.hud_session().await;
-        let title = if title.trim().is_empty() { id.clone() } else { title };
         self.hud_status(&format!("已选择会话：{title}")).await;
         "ok".into()
     }
@@ -581,8 +596,8 @@ pub async fn run(cfg: Config) -> Result<()> {
                 inner.last_status = "空闲（WayVR 已连接）".into();
                 let s = inner.last_status.clone();
                 drop(inner);
-                d.hud_status(&s).await;
                 d.hud_session().await;
+                d.hud_status(&s).await;
             }
         }
     });

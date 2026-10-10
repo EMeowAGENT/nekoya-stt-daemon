@@ -9,6 +9,9 @@ use std::path::Path;
 pub struct State {
     /// 已选会话 id（`ses…`）。
     pub session: Option<String>,
+    /// 已选会话标题（用于界面显示；不显示 id）。
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 impl State {
@@ -46,9 +49,11 @@ mod tests {
     fn roundtrip_and_no_transcript_field() {
         let s = State {
             session: Some("ses_abc".into()),
+            title: Some("标题".into()),
         };
         let text = toml::to_string(&s).unwrap();
         assert!(text.contains("ses_abc"));
+        assert!(text.contains("标题"));
         // 状态里绝不应出现转写相关字段
         assert!(!text.contains("transcript"));
         let back: State = toml::from_str(&text).unwrap();
