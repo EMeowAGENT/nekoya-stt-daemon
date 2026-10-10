@@ -12,6 +12,13 @@ OUT="$(mktemp)"
 MOCK=$!
 trap 'kill "$MOCK" 2>/dev/null || true; wait "$MOCK" 2>/dev/null || true; rm -f "$OUT"' EXIT
 
+# 若抽象 socket 已被真实 WayVR 占用，则无法用 mock 测试 → 跳过。
+sleep 0.3
+if ! kill -0 "$MOCK" 2>/dev/null; then
+	echo "SKIP: 抽象 socket 已被占用（WayVR 正在运行？）"
+	exit 0
+fi
+
 # 等待 mock 就绪：重试 selftest。
 ok=0
 for _ in $(seq 1 40); do

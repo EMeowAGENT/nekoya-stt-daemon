@@ -19,11 +19,20 @@ MW=$!
 ./target/debug/mock_opencode "$PORT" >"$OC" 2>/dev/null &
 MO=$!
 cleanup() {
-	kill "$MW" "$MO" "${DAEMON:-0}" 2>/dev/null || true
-	wait 2>/dev/null || true
+	kill "$MW" "$MO" 2>/dev/null || true
+	if [ -n "${DAEMON:-}" ]; then
+		kill "$DAEMON" 2>/dev/null || true
+	fi
 	rm -rf "$TMP"
 }
 trap cleanup EXIT
+
+# 若抽象 socket 已被真实 WayVR 占用，则无法测试 → 跳过。
+sleep 0.3
+if ! kill -0 "$MW" 2>/dev/null; then
+	echo "SKIP: 抽象 socket 已被占用（WayVR 正在运行？）"
+	exit 0
+fi
 
 sleep 0.3
 NEKOYA_WAYVR_ENABLED=1 NEKOYA_OPENCODE_URL="http://127.0.0.1:$PORT" \

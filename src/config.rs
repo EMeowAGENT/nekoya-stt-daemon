@@ -17,6 +17,20 @@ pub struct Config {
     pub wayvr: Wayvr,
     pub opencode: Opencode,
     pub ptt: Ptt,
+    pub clipboard: Clipboard,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Clipboard {
+    /// 主面板 PTT 识别出终稿后，自动写入宿主剪贴板（手表长按流程不适用）。
+    pub auto_copy: bool,
+}
+
+impl Default for Clipboard {
+    fn default() -> Self {
+        Self { auto_copy: true }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

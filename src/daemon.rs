@@ -56,6 +56,8 @@ struct Inner {
     /// 最近一次拉取的会话列表（用于 `act select N`）。
     sessions: Vec<SessionInfo>,
     list_visible: bool,
+    /// 上一轮实际显示的行数（用于只关闭多出来的行，避免每次刷 64 行）。
+    prev_rows: usize,
 }
 
 #[derive(Clone)]
@@ -78,6 +80,7 @@ impl Daemon {
                 last_status: "空闲".into(),
                 sessions: Vec::new(),
                 list_visible: false,
+                prev_rows: 0,
             })),
             cfg,
             corpus,
@@ -292,23 +295,29 @@ impl Daemon {
             }
         };
 
-        let n = list.len();
+        let n = list.len().min(hud::LIST_ROWS);
+        let link_ok;
         {
             let mut inner = self.inner.lock().await;
-            for i in 0..hud::LIST_ROWS {
-                let (text, vis) = match list.get(i) {
-                    Some(s) => (s.row_label(), true),
-                    None => (String::new(), false),
-                };
-                inner.link.send(&hud::set_text(&hud::list_row_id(i), &text)).await;
-                inner.link.send(&hud::set_visible(&hud::list_row_id(i), vis)).await;
+            let prev = inner.prev_rows.min(hud::LIST_ROWS);
+            // 只更新用到的行（含文本+显示），避免每次刷 64 行造成卡顿。
+            for i in 0..n {
+                let label = list[i].row_label();
+                inner.link.send(&hud::set_text(&hud::list_row_id(i), &label)).await;
+                inner.link.send(&hud::set_visible(&hud::list_row_id(i), true)).await;
+            }
+            // 关闭上一轮多出来、现在不再使用的行。
+            for i in n..prev {
+                inner.link.send(&hud::set_visible(&hud::list_row_id(i), false)).await;
             }
             inner.link.send(&hud::set_visible(hud::EL_LIST, true)).await;
+            link_ok = inner.link.is_connected();
             inner.sessions = list;
             inner.list_visible = true;
+            inner.prev_rows = n;
         }
         self.hud_status(&format!("会话列表（{n}）")).await;
-        format!("ok: {n}")
+        format!("ok: {n} link={}", if link_ok { 1 } else { 0 })
     }
 
     /// `act select N`：选择列表第 N 项并持久化。
@@ -468,6 +477,7 @@ impl Daemon {
 
         match kind {
             Kind::Watch => {
+                // 手表长按：只推送 OpenCode，不写剪贴板。
                 if got_final.is_some() {
                     let _ = self.push_opencode().await;
                 } else {
@@ -475,10 +485,22 @@ impl Daemon {
                 }
             }
             Kind::Panel => {
-                if got_final.is_some() {
-                    self.hud_status("转写完成").await;
-                } else {
-                    self.hud_status("未识别到语音").await;
+                match &got_final {
+                    Some(t) => {
+                        // 主面板 PTT：终稿后自动复制到宿主剪贴板（可配置关闭）。
+                        if self.cfg.clipboard.auto_copy {
+                            let text = t.clone();
+                            let copied =
+                                tokio::task::spawn_blocking(move || sinks::wl_copy(&text)).await;
+                            match copied {
+                                Ok(Ok(())) => self.hud_status("已识别并复制到剪贴板").await,
+                                _ => self.hud_status("转写完成（复制失败）").await,
+                            }
+                        } else {
+                            self.hud_status("转写完成").await;
+                        }
+                    }
+                    None => self.hud_status("未识别到语音").await,
                 }
             }
         }

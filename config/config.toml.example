@@ -34,3 +34,7 @@ username = "opencode"
 [ptt]
 # 手表键：按住超过该毫秒数才开始提交 STT（此前仅本地缓冲）；也是"短按丢弃"阈值。
 start_after_ms = 500
+
+[clipboard]
+# 主面板 PTT 识别出终稿后自动复制到宿主剪贴板（手表长按流程不会复制，只推送 OpenCode）。
+auto_copy = true
