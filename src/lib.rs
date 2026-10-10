@@ -11,6 +11,7 @@ pub mod asr;
 pub mod audio;
 pub mod config;
 pub mod control;
+pub mod corrections;
 pub mod daemon;
 pub mod engine;
 pub mod hud;

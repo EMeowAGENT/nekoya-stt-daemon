@@ -38,3 +38,7 @@ start_after_ms = 500
 [clipboard]
 # 主面板 PTT 识别出终稿后自动复制到宿主剪贴板（手表长按流程不会复制，只推送 OpenCode）。
 auto_copy = true
+
+[corrections]
+# 应用 ~/.config/nekoya-stt/corrections.txt（误识别纠正表，每行 `错误=正确`）。
+enabled = true

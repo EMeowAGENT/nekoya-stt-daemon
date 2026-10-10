@@ -64,11 +64,20 @@ pub struct Daemon {
     inner: Arc<Mutex<Inner>>,
     cfg: Config,
     corpus: Option<String>,
+    /// 误识别纠正表（错误=正确）。
+    corrections: Vec<(String, String)>,
 }
 
 impl Daemon {
     pub fn new(cfg: Config, corpus: Option<String>) -> Self {
         let link = WayvrLink::new(cfg.wayvr.enabled, cfg.wayvr.client_name.clone());
+        let corrections = if cfg.corrections.enabled {
+            std::fs::read_to_string(config::corrections_file())
+                .map(|t| crate::corrections::parse(&t))
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let (session, session_title) = match PersistedState::load() {
             Ok(s) => (s.session, s.title),
             Err(_) => (None, None),
@@ -86,6 +95,7 @@ impl Daemon {
             })),
             cfg,
             corpus,
+            corrections,
         }
     }
 
@@ -474,6 +484,7 @@ impl Daemon {
             match ev {
                 AsrEvent::SessionReady => {}
                 AsrEvent::Preview(t) => {
+                    let t = crate::corrections::apply(&t, &self.corrections);
                     // 去重：预览常重复同一句，避免无意义的面板刷新。
                     if t != last_preview {
                         last_preview = t.clone();
@@ -481,6 +492,7 @@ impl Daemon {
                     }
                 }
                 AsrEvent::Final(t) => {
+                    let t = crate::corrections::apply(&t, &self.corrections);
                     self.hud_transcript(&t).await;
                     got_final = Some(t);
                 }

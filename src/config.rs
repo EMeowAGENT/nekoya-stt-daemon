@@ -18,6 +18,20 @@ pub struct Config {
     pub opencode: Opencode,
     pub ptt: Ptt,
     pub clipboard: Clipboard,
+    pub corrections: Corrections,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Corrections {
+    /// 是否应用 `~/.config/nekoya-stt/corrections.txt` 的误识别纠正表。
+    pub enabled: bool,
+}
+
+impl Default for Corrections {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -250,6 +264,10 @@ pub fn state_file() -> PathBuf {
 
 pub fn lexicon_file() -> PathBuf {
     config_dir().join("lexicon.txt")
+}
+
+pub fn corrections_file() -> PathBuf {
+    config_dir().join("corrections.txt")
 }
 
 pub fn control_socket() -> PathBuf {
