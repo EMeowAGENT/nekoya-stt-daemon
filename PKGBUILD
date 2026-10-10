@@ -1,4 +1,4 @@
-# Maintainer: EMeowAGENT <ccedercatcc@gmail.com>
+# Maintainer: EMeowAGENT <ccendercatcc@gmail.com>
 pkgname=nekoya-stt
 pkgver=0.1.0
 pkgrel=1
