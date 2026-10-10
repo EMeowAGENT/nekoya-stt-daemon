@@ -58,6 +58,12 @@ enum Cmd {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// 面板/手表按钮入口：`act watch-down` / `act copy` / `act list` / `act select 3`
+    /// （等价于把这些动作转发给 daemon 控制通道）
+    Act {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// 选择 OpenCode 会话（持久化到 state.toml）
     Use {
         /// 会话 id（`ses…`）
@@ -82,7 +88,8 @@ fn main() -> Result<()> {
         Cmd::Transcribe { file, auto, fake } => transcribe(file, auto, fake),
         Cmd::Sessions => sessions(),
         Cmd::OpencodeSelftest { session, send } => opencode_selftest(session, send),
-        Cmd::Ctl { args } => ctl(args),
+        Cmd::Ctl { args } => send_control(&args.join(" ")),
+        Cmd::Act { args } => send_control(&control::act_to_control(&args)),
         Cmd::Use { id } => select_session(&id),
         Cmd::Status => status(),
     }
@@ -343,13 +350,13 @@ fn opencode_selftest(session: Option<String>, send: Option<String>) -> Result<()
     Ok(())
 }
 
-fn ctl(args: Vec<String>) -> Result<()> {
-    let cmd = args.join(" ");
-    if cmd.trim().is_empty() {
-        anyhow::bail!("用法: nekoya-stt ctl <命令…>（见 README 控制通道）");
+fn send_control(line: &str) -> Result<()> {
+    let cmd = line.trim();
+    if cmd.is_empty() {
+        anyhow::bail!("用法: nekoya-stt act <动作>  或  nekoya-stt ctl <命令…>（见 README）");
     }
     let sock = config::control_socket();
-    match control::request_sync(&sock, &cmd) {
+    match control::request_sync(&sock, cmd) {
         Ok(reply) => {
             println!("{reply}");
             Ok(())

@@ -129,6 +129,18 @@ nekoya-stt ctl act list        # 打开/关闭会话列表
 nekoya-stt ctl act select 0    # 选择列表第 0 项并持久化到 state.toml
 ```
 
+面板/手表按钮的等价入口（`act` 子命令，可直接手动调用/调试）：
+
+```sh
+nekoya-stt act watch-down   # = ctl watch-down
+nekoya-stt act watch-up
+nekoya-stt act copy         # = ctl act copy
+nekoya-stt act osc
+nekoya-stt act push
+nekoya-stt act list
+nekoya-stt act select 0
+```
+
 ### 桌面预览面板（不开 WayVR）
 
 WayVR 源码里的 `uidev` 可在普通窗口里渲染 wgui XML：

@@ -45,6 +45,12 @@ pub fn parse(line: &str) -> Option<Cmd> {
         "ptt-up" => Some(Cmd::PttUp),
         "show" => Some(Cmd::Show),
         "status" => Some(Cmd::Status),
+        // 裸动作（面板经 `nekoya-stt act <动作>` 转发时会命中）
+        "copy" => Some(Cmd::ActCopy),
+        "osc" => Some(Cmd::ActOsc),
+        "push" => Some(Cmd::ActPush),
+        "list" => Some(Cmd::ActList),
+        "select" => it.next()?.parse::<usize>().ok().map(Cmd::ActSelect),
         "act" => match it.next()? {
             "copy" => Some(Cmd::ActCopy),
             "osc" => Some(Cmd::ActOsc),
@@ -54,6 +60,19 @@ pub fn parse(line: &str) -> Option<Cmd> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// 把 CLI 的 `nekoya-stt act <args…>` 映射为控制通道命令行。
+///
+/// - 生命周期类直接转发：`act watch-down` → `watch-down`
+/// - 其余按动作转发：`act copy` → `act copy`、`act select 3` → `act select 3`
+pub fn act_to_control(args: &[String]) -> String {
+    const LIFECYCLE: [&str; 6] = ["watch-down", "watch-up", "ptt-down", "ptt-up", "show", "status"];
+    let joined = args.join(" ");
+    match args.first().map(String::as_str) {
+        Some(first) if LIFECYCLE.contains(&first) => joined,
+        _ => format!("act {joined}"),
     }
 }
 
@@ -131,6 +150,24 @@ mod tests {
         assert_eq!(parse("act select 3"), Some(Cmd::ActSelect(3)));
         assert_eq!(parse("show"), Some(Cmd::Show));
         assert_eq!(parse("status"), Some(Cmd::Status));
+        // 裸动作形式
+        assert_eq!(parse("copy"), Some(Cmd::ActCopy));
+        assert_eq!(parse("select 5"), Some(Cmd::ActSelect(5)));
         assert_eq!(parse("nonsense"), None);
+    }
+
+    #[test]
+    fn act_subcommand_maps_to_control_line() {
+        let v = |s: &str| s.split_whitespace().map(String::from).collect::<Vec<_>>();
+        assert_eq!(act_to_control(&v("watch-down")), "watch-down");
+        assert_eq!(act_to_control(&v("ptt-up")), "ptt-up");
+        assert_eq!(act_to_control(&v("show")), "show");
+        assert_eq!(act_to_control(&v("copy")), "act copy");
+        assert_eq!(act_to_control(&v("push")), "act push");
+        assert_eq!(act_to_control(&v("select 3")), "act select 3");
+        // 映射结果必须能被解析
+        assert_eq!(parse(&act_to_control(&v("watch-down"))), Some(Cmd::WatchDown));
+        assert_eq!(parse(&act_to_control(&v("copy"))), Some(Cmd::ActCopy));
+        assert_eq!(parse(&act_to_control(&v("select 3"))), Some(Cmd::ActSelect(3)));
     }
 }

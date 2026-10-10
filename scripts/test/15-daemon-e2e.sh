@@ -47,8 +47,10 @@ done
 
 STATUS="$(./target/debug/nekoya-stt ctl status)"
 echo "status: $STATUS"
-LIST="$(./target/debug/nekoya-stt ctl act list)"
+LIST="$(./target/debug/nekoya-stt act list)"
 echo "act list: $LIST"
+ACT_STATUS="$(./target/debug/nekoya-stt act status)"
+echo "act status: $ACT_STATUS"
 sleep 0.3
 
 echo "--- wayvr mock 收到 ---"
@@ -67,6 +69,10 @@ grep -q 'WayVR=已连接' <<<"$STATUS" || {
 }
 grep -q 'ok: 2' <<<"$LIST" || {
 	echo "FAIL: act list 未返回 2 条"
+	fail=1
+}
+grep -q '阶段=空闲' <<<"$ACT_STATUS" || {
+	echo "FAIL: act status 未走通"
 	fail=1
 }
 grep -q 'LIST /api/session' "$OC" || {
