@@ -11,55 +11,60 @@
     会话列表行：行内放一个 <label> 承接文本（SetText 打 label，字号/高度可控，避免文字重叠）；
     行本身默认可见，由 daemon 对未使用的行发 SetVisible(false) 隐藏。
   -->
-  <theme>
-    <var key="_panel_icon" value="assets/opencode-wordmark.svg" />
-  </theme>
+  <vars>
+    <var key="_panel_icon" value="/home/EMeowSystem/.config/wayvr/theme/assets/opencode-wordmark.svg" />
+  </vars>
 
   <macro name="bg" width="100%" color="background" border_color="outline" round="10" border="2" />
   <macro name="btn" border="2" round="6" align_items="center" justify_content="center" padding="6" width="64" height="64" overflow="visible" />
   <macro name="rowbtn" width="100%" height="30" border="1" round="4" padding="1" align_items="center" justify_content="center" />
+  <macro name="sep" width="2" height="64" color="outline" round="1" />
 
   <elements>
     <div flex_direction="column" width="660" gap="6">
 
       <rectangle macro="bg" padding="10" flex_direction="column" gap="4">
-        <label id="status" text="空闲" size="16" color="faded" />
-        <label id="session" text="会话：（未选择）" size="16" color="faded" />
+        <label id="status" text="空闲" size="16" color="on_background_variant" />
+        <label id="session" text="会话：（未选择）" size="16" color="on_background_variant" />
         <label id="transcript" wrap="1" size="20" text="" />
       </rectangle>
 
       <rectangle macro="bg" padding="10">
-        <div gap="8">
-          <Button macro="btn" id="btn_ptt" tooltip="PTT"
+        <div gap="8" width="100%">
+          <Button macro="btn" id="btn_ptt" tooltip_str="PTT"
             _press="::ShellExec /usr/bin/nekoya-stt act ptt-down"
             _release="::ShellExec /usr/bin/nekoya-stt act ptt-up">
             <sprite width="38" height="38" src_builtin="@/icons/mic.svg" />
           </Button>
-          <Button macro="btn" id="btn_copy" tooltip="复制到剪贴板"
+          <rectangle macro="sep" />
+          <Button macro="btn" id="btn_copy" tooltip_str="复制到剪贴板"
             _press="::ShellExec /usr/bin/nekoya-stt act copy">
             <sprite width="38" height="38" src_builtin="@/icons/paste.svg" />
           </Button>
-          <Button macro="btn" id="btn_osc" tooltip="VRChat OSC"
-            _press="::ShellExec /usr/bin/nekoya-stt act osc">
-            <sprite width="38" height="38" src_builtin="@/icons/chat.svg" />
-          </Button>
-          <Button macro="btn" id="btn_paste" tooltip="Ctrl+V"
+          <Button macro="btn" id="btn_paste" tooltip_str="Ctrl+V"
             _press="::SendKey LCtrl down"
             _press2="::SendKey V down"
             _press3="::SendKey V up"
             _press4="::SendKey LCtrl up">
             <sprite width="38" height="38" src_builtin="@/icons/paste-go.svg" />
           </Button>
-          <Button macro="btn" id="btn_enter" tooltip="回车"
+          <rectangle macro="sep" />
+          <Button macro="btn" id="btn_enter" tooltip_str="回车"
             _press="::SendKey Return down"
             _release="::SendKey Return up">
             <sprite width="38" height="38" src_builtin="@/keyboard/return.svg" />
           </Button>
-          <Button macro="btn" id="btn_push" tooltip="推送到 OpenCode"
-            _press="::ShellExec /usr/bin/nekoya-stt act push">
-            <sprite width="56" height="10" src="assets/opencode-wordmark.svg" />
+          <rectangle macro="sep" />
+          <Button macro="btn" id="btn_osc" tooltip_str="VRChat OSC"
+            _press="::ShellExec /usr/bin/nekoya-stt act osc">
+            <sprite width="38" height="38" src_builtin="@/icons/chat.svg" />
           </Button>
-          <Button macro="btn" id="btn_sessions" tooltip="会话列表"
+          <div flex_grow="1" />
+          <Button macro="btn" id="btn_push" tooltip_str="推送到 OpenCode"
+            _press="::ShellExec /usr/bin/nekoya-stt act push">
+            <sprite width="38" height="38" src="/home/EMeowSystem/.config/wayvr/theme/assets/opencode-wordmark.svg" />
+          </Button>
+          <Button macro="btn" id="btn_sessions" tooltip_str="会话列表"
             _press="::ShellExec /usr/bin/nekoya-stt act list">
             <sprite width="38" height="38" src_builtin="@/keyboard/burger.svg" />
           </Button>

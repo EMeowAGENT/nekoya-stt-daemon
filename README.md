@@ -88,7 +88,7 @@ makepkg -si
 <Button id="btn_stt"
   _press="::ShellExec /usr/bin/nekoya-stt act watch-down"
   _release="::ShellExec /usr/bin/nekoya-stt act watch-up">
-  <sprite width="56" height="10" src="assets/opencode-wordmark.svg" />
+  <sprite width="38" height="38" src="/home/EMeowSystem/.config/wayvr/theme/assets/opencode-wordmark.svg" />
 </Button>
 ```
 
