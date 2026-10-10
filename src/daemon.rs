@@ -455,12 +455,8 @@ impl Daemon {
                 _ = notify.notified() => {
                     stop.store(true, Ordering::Relaxed);
                     drop(rx); // 关闭通道，采集线程结束
-                    self.hud_status("短按：已打开面板").await;
-                    let packet = hud::set_panel_visible(true);
-                    {
-                        let mut inner = self.inner.lock().await;
-                        inner.link.send(&packet).await;
-                    }
+                    // 短按：仅丢弃，不再打开主面板（主面板由 WayVR 列表/act show 打开）。
+                    self.hud_status("已取消（按键过短）").await;
                     self.finish_recording(kind).await;
                     return;
                 }

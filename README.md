@@ -84,11 +84,11 @@ makepkg -si
 在**手表**上加一个 STT 键（自行修改 `~/.config/wayvr/theme/gui/watch.xml`）：
 
 ```xml
-<!-- 按下：开始录制；松手：短按(<500ms)丢弃并显示主面板，长按(≥500ms)收尾并推送 OpenCode -->
+<!-- 按下：开始录制；松手：短按(<500ms)丢弃，长按(≥500ms)收尾并推送 OpenCode -->
 <Button id="btn_stt"
   _press="::ShellExec /usr/bin/nekoya-stt act watch-down"
   _release="::ShellExec /usr/bin/nekoya-stt act watch-up">
-  <sprite width="38" height="38" src_builtin="@/icons/mic.svg" />
+  <sprite width="56" height="10" src="assets/opencode-wordmark.svg" />
 </Button>
 ```
 
@@ -97,8 +97,11 @@ makepkg -si
 - **按下**：开始录制（仅本地缓冲，**不开**识别连接）。
 - 按住
   **≥500ms**：才建立识别会话，并把此前缓冲的音频补发（**不丢首字、不浪费连接**）。
-- **松手 <500ms**：丢弃本次录音，并确保显示主面板。
+- **松手 <500ms**：丢弃本次录音（不打开面板）。
 - **松手 ≥500ms**：收尾并把终稿**推送到 OpenCode 并发送**。
+
+> 主面板的显示由 WayVR 的 overlay 列表（watch 的 Panels 区，`::OverlayToggle nekoya_stt`）或
+> `nekoya-stt act show` 负责；STT 键只做"录/推"。
 
 > 不使用 WayVR 的 `_short_release`/`_long_release`（那是按它自己的
 > `long_press_duration` 判定）；长短由 daemon 用 `ptt.start_after_ms` 计时。
