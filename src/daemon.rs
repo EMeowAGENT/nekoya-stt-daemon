@@ -246,7 +246,9 @@ impl Daemon {
         let cfg = self.cfg.clone();
         let res = tokio::task::spawn_blocking(move || -> Result<(), String> {
             let ep = opencode::discover(&cfg).ok_or_else(|| "未发现 OpenCode 端点".to_string())?;
-            opencode::prompt(&ep, &session, &text).map_err(|e| e.to_string())
+            // 取会话当前 agent，让推送跟随 TUI 的选择（拿不到则用默认）。
+            let agent = opencode::get_session_agent(&ep, &session);
+            opencode::prompt(&ep, &session, &text, agent.as_deref()).map_err(|e| e.to_string())
         })
         .await;
 

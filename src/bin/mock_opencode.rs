@@ -56,7 +56,13 @@ fn handle(stream: &mut TcpStream) -> std::io::Result<()> {
     }
     let body_str = String::from_utf8_lossy(&body).to_string();
 
-    if method == "GET" && path.starts_with("/api/session") {
+    if method == "GET" && path.starts_with("/api/session/") {
+        // 单会话查询：返回 agent，供"跟随 TUI 的 agent"测试。
+        println!("GET1 {path}");
+        let _ = std::io::stdout().flush();
+        let json = r#"{"data":{"id":"ses_mock1","title":"Mock Session 1","agent":"plan","location":{"directory":"/tmp"},"time":{"updated":200}}}"#;
+        write_resp(stream, 200, json)
+    } else if method == "GET" && path.starts_with("/api/session") {
         println!("LIST {path}");
         let _ = std::io::stdout().flush();
         let json = r#"{"data":[{"id":"ses_mock1","title":"Mock Session 1","location":{"directory":"/tmp"},"time":{"updated":200}},{"id":"ses_mock2","title":"Mock Session 2","location":{"directory":"/tmp"},"time":{"updated":100}}],"cursor":{"previous":null,"next":null}}"#;

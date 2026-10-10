@@ -52,6 +52,10 @@ grep -q '你好，OpenCode' "$OUT" || {
 	echo "FAIL: prompt 文本不符"
 	fail=1
 }
+grep -q '"agents":\[{"name":"plan"}\]' "$OUT" || {
+	echo "FAIL: prompt 未带上会话 agent"
+	fail=1
+}
 
 [[ "$fail" -eq 0 ]] && echo "PASS" || {
 	echo "FAIL"

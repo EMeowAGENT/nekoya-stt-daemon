@@ -218,13 +218,53 @@ pub fn list_sessions(
 }
 
 /// 向指定会话推送一条 prompt。
-pub fn prompt(ep: &Endpoint, session_id: &str, text: &str) -> Result<()> {
+/// 从 `GET /api/session/{id}` 响应解析会话当前 agent。
+pub fn parse_session_agent(json: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let agent = v
+        .pointer("/data/agent")
+        .or_else(|| v.get("agent"))
+        .and_then(serde_json::Value::as_str)?;
+    if agent.is_empty() {
+        None
+    } else {
+        Some(agent.to_string())
+    }
+}
+
+/// 构造 prompt 请求体：带上会话当前 agent，使推送跟随 TUI 的选择。
+pub fn prompt_body(text: &str, agent: Option<&str>) -> String {
+    let mut v = serde_json::json!({ "text": text });
+    if let Some(a) = agent {
+        if !a.is_empty() {
+            v["agents"] = serde_json::json!([{ "name": a }]);
+        }
+    }
+    v.to_string()
+}
+
+/// 读取会话当前 agent（拿不到返回 None）。
+pub fn get_session_agent(ep: &Endpoint, session_id: &str) -> Option<String> {
+    if !session_id.starts_with("ses") {
+        return None;
+    }
+    let url = format!("{}/api/session/{}", ep.url, session_id);
+    let headers = auth_headers(ep);
+    let resp = http::request("GET", &url, &headers, None).ok()?;
+    if resp.status != 200 {
+        return None;
+    }
+    parse_session_agent(&String::from_utf8_lossy(&resp.body))
+}
+
+/// 向指定会话推送一条 prompt（`agent` 为会话当前 agent，用于跟随 TUI）。
+pub fn prompt(ep: &Endpoint, session_id: &str, text: &str, agent: Option<&str>) -> Result<()> {
     if !session_id.starts_with("ses") {
         anyhow::bail!("会话 id 非法: {session_id}");
     }
     let url = format!("{}/api/session/{}/prompt", ep.url, session_id);
     let headers = auth_headers(ep);
-    let body = serde_json::json!({ "text": text }).to_string();
+    let body = prompt_body(text, agent);
     let resp = http::request("POST", &url, &headers, Some(body.as_bytes()))?;
     if !(200..300).contains(&resp.status) {
         anyhow::bail!(
@@ -355,5 +395,34 @@ mod tests {
         let list = parse_sessions(json).unwrap();
         assert_eq!(list[0].title, "");
         assert_eq!(list[0].updated, 0);
+    }
+
+    #[test]
+    fn parse_session_agent_variants() {
+        assert_eq!(
+            parse_session_agent(r#"{"data":{"agent":"plan"}}"#).as_deref(),
+            Some("plan")
+        );
+        assert_eq!(
+            parse_session_agent(r#"{"agent":"build"}"#).as_deref(),
+            Some("build")
+        );
+        assert_eq!(parse_session_agent(r#"{"data":{}}"#), None);
+        assert_eq!(parse_session_agent(r#"{"data":{"agent":""}}"#), None);
+        assert_eq!(parse_session_agent("not json"), None);
+    }
+
+    #[test]
+    fn prompt_body_includes_agent_when_present() {
+        let with = prompt_body("你好", Some("plan"));
+        let v: serde_json::Value = serde_json::from_str(&with).unwrap();
+        assert_eq!(v["text"], "你好");
+        assert_eq!(v["agents"][0]["name"], "plan");
+        let without = prompt_body("你好", None);
+        let v: serde_json::Value = serde_json::from_str(&without).unwrap();
+        assert!(v.get("agents").is_none());
+        let empty = prompt_body("你好", Some(""));
+        let v: serde_json::Value = serde_json::from_str(&empty).unwrap();
+        assert!(v.get("agents").is_none());
     }
 }

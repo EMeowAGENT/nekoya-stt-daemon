@@ -375,8 +375,9 @@ fn opencode_selftest(session: Option<String>, send: Option<String>) -> Result<()
     }
 
     if let (Some(sid), Some(text)) = (session, send) {
-        opencode::prompt(&ep, &sid, &text)?;
-        println!("已发送 prompt 到 {sid}");
+        let agent = opencode::get_session_agent(&ep, &sid);
+        opencode::prompt(&ep, &sid, &text, agent.as_deref())?;
+        println!("已发送 prompt 到 {sid}（agent={}）", agent.unwrap_or_else(|| "默认".into()));
     }
     Ok(())
 }
