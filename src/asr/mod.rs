@@ -199,32 +199,61 @@ pub async fn transcribe(
         format!("Bearer {}", cfg.api_key).parse().context("auth header")?,
     );
 
-    let (mut ws, _resp) = tokio_tungstenite::connect_async(request)
+    let (ws, _resp) = tokio_tungstenite::connect_async(request)
         .await
         .context("connect qwen realtime ws")?;
 
+    // 拆成写端/读端：边发音频边收实时预览（否则预览只能等到松手后才到达）。
+    let (mut sink, mut stream) = ws.split();
+
     // 配置会话
-    ws.send(Message::text(build_session_update(&cfg, mode)))
+    sink.send(Message::text(build_session_update(&cfg, mode)))
         .await
         .context("send session.update")?;
 
-    // 阶段 A：转发音频
-    while let Some(chunk) = audio.recv().await {
-        if chunk.is_empty() {
-            continue;
+    // 阶段 A：同时转发音频 + 读取实时预览。
+    loop {
+        tokio::select! {
+            chunk = audio.recv() => {
+                match chunk {
+                    Some(chunk) => {
+                        if !chunk.is_empty() {
+                            sink.send(Message::text(build_append(&chunk)))
+                                .await
+                                .context("send audio append")?;
+                        }
+                    }
+                    None => break,
+                }
+            }
+            incoming = stream.next() => {
+                match incoming {
+                    Some(Ok(Message::Text(t))) => {
+                        let ev = parse_event(t.as_str());
+                        if matches!(ev, AsrEvent::Finished) {
+                            return Ok(());
+                        }
+                        let _ = events.send(ev);
+                    }
+                    Some(Ok(Message::Close(_))) => return Ok(()),
+                    Some(Ok(_)) => {}
+                    Some(Err(e)) => {
+                        let _ = events.send(AsrEvent::Error(e.to_string()));
+                        return Ok(());
+                    }
+                    None => break,
+                }
+            }
         }
-        ws.send(Message::text(build_append(&chunk)))
-            .await
-            .context("send audio append")?;
     }
 
     if mode == Mode::Manual {
-        ws.send(Message::text(build_commit())).await.context("send commit")?;
+        sink.send(Message::text(build_commit())).await.context("send commit")?;
     }
-    ws.send(Message::text(build_finish())).await.context("send finish")?;
+    sink.send(Message::text(build_finish())).await.context("send finish")?;
 
     // 阶段 B：读取直到 session.finished / 关闭
-    while let Some(msg) = ws.next().await {
+    while let Some(msg) = stream.next().await {
         let msg = msg.context("ws message")?;
         match msg {
             Message::Text(t) => {

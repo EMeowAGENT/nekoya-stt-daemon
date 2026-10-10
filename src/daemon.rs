@@ -467,11 +467,16 @@ impl Daemon {
         let task = tokio::spawn(async move { asr::transcribe(acfg, Mode::Manual, rx, evt_tx).await });
 
         let mut got_final: Option<String> = None;
+        let mut last_preview = String::new();
         while let Some(ev) = evt_rx.recv().await {
             match ev {
                 AsrEvent::SessionReady => {}
                 AsrEvent::Preview(t) => {
-                    self.hud_transcript(&t).await;
+                    // 去重：预览常重复同一句，避免无意义的面板刷新。
+                    if t != last_preview {
+                        last_preview = t.clone();
+                        self.hud_transcript(&t).await;
+                    }
                 }
                 AsrEvent::Final(t) => {
                     self.hud_transcript(&t).await;
