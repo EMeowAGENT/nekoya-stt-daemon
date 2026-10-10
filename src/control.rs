@@ -15,6 +15,8 @@ pub enum Cmd {
     WatchDown,
     /// 手表键松开（短按丢弃 / 长按推送）。
     WatchUp,
+    /// 手表键短按取消（丢弃本次录音，不推送；面板切换由 WayVR 的 ::OverlayToggle 负责）。
+    WatchCancel,
     /// 主面板 PTT 按下（立即开流）。
     PttDown,
     /// 主面板 PTT 松开（收尾，仅更新字幕）。
@@ -41,6 +43,7 @@ pub fn parse(line: &str) -> Option<Cmd> {
     match it.next()? {
         "watch-down" => Some(Cmd::WatchDown),
         "watch-up" => Some(Cmd::WatchUp),
+        "watch-cancel" => Some(Cmd::WatchCancel),
         "ptt-down" => Some(Cmd::PttDown),
         "ptt-up" => Some(Cmd::PttUp),
         "show" => Some(Cmd::Show),
@@ -68,7 +71,7 @@ pub fn parse(line: &str) -> Option<Cmd> {
 /// - 生命周期类直接转发：`act watch-down` → `watch-down`
 /// - 其余按动作转发：`act copy` → `act copy`、`act select 3` → `act select 3`
 pub fn act_to_control(args: &[String]) -> String {
-    const LIFECYCLE: [&str; 6] = ["watch-down", "watch-up", "ptt-down", "ptt-up", "show", "status"];
+    const LIFECYCLE: [&str; 7] = ["watch-down", "watch-up", "watch-cancel", "ptt-down", "ptt-up", "show", "status"];
     let joined = args.join(" ");
     match args.first().map(String::as_str) {
         Some(first) if LIFECYCLE.contains(&first) => joined,
@@ -142,6 +145,7 @@ mod tests {
     fn parse_commands() {
         assert_eq!(parse("watch-down"), Some(Cmd::WatchDown));
         assert_eq!(parse("watch-up\n"), Some(Cmd::WatchUp));
+        assert_eq!(parse("watch-cancel"), Some(Cmd::WatchCancel));
         assert_eq!(parse("ptt-down"), Some(Cmd::PttDown));
         assert_eq!(parse("act copy"), Some(Cmd::ActCopy));
         assert_eq!(parse("act osc"), Some(Cmd::ActOsc));

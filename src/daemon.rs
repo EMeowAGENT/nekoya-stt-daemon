@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex as SyncMutex;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -32,6 +33,13 @@ enum Kind {
     Panel,
 }
 
+/// 手表键松手时的意图（由 WayVR 的 `_short_release`/`_long_release` 决定）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReleaseKind {
+    Finish,
+    Cancel,
+}
+
 impl Kind {
     fn label(self) -> &'static str {
         match self {
@@ -45,6 +53,7 @@ struct Active {
     kind: Kind,
     stop: Arc<AtomicBool>,
     notify: Arc<Notify>,
+    outcome: Arc<SyncMutex<Option<ReleaseKind>>>,
 }
 
 struct Inner {
@@ -164,8 +173,9 @@ impl Daemon {
         match cmd {
             Cmd::WatchDown => self.start(Kind::Watch).await,
             Cmd::PttDown => self.start(Kind::Panel).await,
-            Cmd::WatchUp => self.stop(Kind::Watch).await,
-            Cmd::PttUp => self.stop(Kind::Panel).await,
+            Cmd::WatchUp => self.stop_release(Kind::Watch, ReleaseKind::Finish).await,
+            Cmd::WatchCancel => self.stop_release(Kind::Watch, ReleaseKind::Cancel).await,
+            Cmd::PttUp => self.stop_release(Kind::Panel, ReleaseKind::Finish).await,
             Cmd::Show => {
                 let packet = hud::set_panel_visible(true);
                 let mut inner = self.inner.lock().await;
@@ -386,7 +396,13 @@ impl Daemon {
         }
         let stop = Arc::new(AtomicBool::new(false));
         let notify = Arc::new(Notify::new());
-        inner.active = Some(Active { kind, stop: stop.clone(), notify: notify.clone() });
+        let outcome: Arc<SyncMutex<Option<ReleaseKind>>> = Arc::new(SyncMutex::new(None));
+        inner.active = Some(Active {
+            kind,
+            stop: stop.clone(),
+            notify: notify.clone(),
+            outcome: outcome.clone(),
+        });
         drop(inner);
 
         let daemon = self.clone();
@@ -394,16 +410,21 @@ impl Daemon {
         let start_after = Duration::from_millis(self.cfg.ptt.start_after_ms);
         let acfg = self.asr_config();
         tokio::spawn(async move {
-            daemon.run_recording(kind, src, start_after, stop, notify, acfg).await;
+            daemon
+                .run_recording(kind, src, start_after, stop, notify, outcome, acfg)
+                .await;
         });
 
         "ok".into()
     }
 
-    async fn stop(&self, kind: Kind) -> String {
+    async fn stop_release(&self, kind: Kind, release: ReleaseKind) -> String {
         let inner = self.inner.lock().await;
         match inner.active.as_ref() {
             Some(a) if a.kind == kind => {
+                if let Ok(mut o) = a.outcome.lock() {
+                    *o = Some(release);
+                }
                 a.stop.store(true, Ordering::Relaxed);
                 a.notify.notify_waiters();
                 // active 由 run_recording 结束时清除；这里不立刻清，避免竞态
@@ -422,6 +443,7 @@ impl Daemon {
         start_after: Duration,
         stop: Arc<AtomicBool>,
         notify: Arc<Notify>,
+        outcome: Arc<SyncMutex<Option<ReleaseKind>>>,
         acfg: AsrConfig,
     ) {
         self.hud_status(&format!("{}：按住中…", kind.label())).await;
@@ -453,15 +475,11 @@ impl Daemon {
             tokio::select! {
                 _ = tokio::time::sleep(start_after) => {}
                 _ = notify.notified() => {
+                    // 在 start_after 之前松手（WayVR 判为短按）：只丢弃；
+                    // 面板切换由 XML 的 ::OverlayToggle nekoya_stt 负责。
                     stop.store(true, Ordering::Relaxed);
                     drop(rx); // 关闭通道，采集线程结束
-                    // 短按：丢弃本次录音，并确保打开主面板（ensure-on）。
-                    self.hud_status("短按：打开主面板").await;
-                    let packet = hud::set_panel_visible(true);
-                    {
-                        let mut inner = self.inner.lock().await;
-                        inner.link.send(&packet).await;
-                    }
+                    self.hud_status("已取消").await;
                     self.finish_recording(kind).await;
                     return;
                 }
@@ -512,8 +530,11 @@ impl Daemon {
 
         match kind {
             Kind::Watch => {
-                // 手表长按：只推送 OpenCode，不写剪贴板。
-                if got_final.is_some() {
+                // 手表键：短按取消（WayVR 已判）→ 丢弃；长按 → 只推送 OpenCode，不写剪贴板。
+                let cancelled = matches!(*outcome.lock().unwrap(), Some(ReleaseKind::Cancel));
+                if cancelled {
+                    self.hud_status("已取消").await;
+                } else if got_final.is_some() {
                     let _ = self.push_opencode().await;
                 } else {
                     self.hud_status("未识别到语音").await;

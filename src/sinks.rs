@@ -88,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn chatbox_bool_typetag_is_T() {
+    fn chatbox_bool_typetag_is_t() {
         let p = osc_chatbox_packet("");
         assert_eq!(&p[16..20], b",sT\0");
     }

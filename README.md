@@ -84,24 +84,28 @@ makepkg -si
 在**手表**上加一个 STT 键（自行修改 `~/.config/wayvr/theme/gui/watch.xml`）：
 
 ```xml
-<!-- 按下：开始录制；松手：短按(<500ms)丢弃，长按(≥500ms)收尾并推送 OpenCode -->
-<Button id="btn_stt"
+<!-- 按下：开始录制；短按=切换主面板；长按=识别并推送 OpenCode -->
+<Button id="btn_stt" macro="button_style"
   _press="::ShellExec /usr/bin/nekoya-stt act watch-down"
-  _release="::ShellExec /usr/bin/nekoya-stt act watch-up">
-  <sprite width="38" height="38" src="/home/EMeowSystem/.config/wayvr/theme/assets/opencode-wordmark.svg" />
+  _short_release="::ShellExec /usr/bin/nekoya-stt act watch-cancel"
+  _short_release2="::OverlayToggle nekoya_stt"
+  _long_release="::ShellExec /usr/bin/nekoya-stt act watch-up">
+  <sprite width="32" height="32" src="/home/EMeowSystem/.config/wayvr/theme/assets/opencode-wordmark.svg" />
 </Button>
 ```
 
-行为（阈值 `ptt.start_after_ms`，默认 500，见配置）：
+行为：
 
 - **按下**：开始录制（仅本地缓冲，**不开**识别连接）。
-- 按住
-  **≥500ms**：才建立识别会话，并把此前缓冲的音频补发（**不丢首字、不浪费连接**）。
-- **松手 <500ms**：丢弃本次录音，并**打开主面板**（ensure-on）。
-- **松手 ≥500ms**：收尾并把终稿**推送到 OpenCode 并发送**。
+- 按住 **≥`ptt.start_after_ms`（默认 500）**：才建立识别会话，并把此前缓冲的音频补发
+  （**不丢首字、不浪费连接**）。
+- **短按**（松手时长 < WayVR 的 `long_press_duration`，默认 1.0s）：
+  丢弃本次录音；面板显隐由 `::OverlayToggle nekoya_stt` 交给 WayVR 自己切换。
+- **长按**（≥ `long_press_duration`）：收尾并把终稿**推送到 OpenCode 并发送**。
 
-> 不使用 WayVR 的 `_short_release`/`_long_release`（那是按它自己的
-> `long_press_duration` 判定）；长短由 daemon 用 `ptt.start_after_ms` 计时。
+> 长短判定用 WayVR 的 `_short_release`/`_long_release`（阈值是全局 `long_press_duration`，
+> 默认 1.0s；`long_press_time` 属性在当前版本无效）。daemon 另用 `ptt.start_after_ms`
+> 决定"何时开流"——两者独立。
 
 ### 守护进程与控制通道
 
